@@ -116,6 +116,7 @@ private:
 	int column;
 
 	bool comment_mode;
+	bool verbatim_mode;
 
 	void _tokenize();
 
@@ -127,10 +128,12 @@ private:
 	//void _make_type(const Variant::Type &p_type);
 	//void _make_error(const String &p_error);
 
-	void skip_untill_newline();
+	String skip_until_newline();
 	void skip_whitespace();
-	void skip_untill_str(String str); // na przyklad dla skip do konca komentarza blokowego
-	void skip_untill_whitespace();
+	String skip_until(String str); // na przyklad dla skip do konca komentarza blokowego
+	String skip_until_whitespace();
+	String read_char_literal();
+	String read_string_literal();
 
 	bool read_word(String &word, Token &type); // read until identifier character
 	bool read_number(String &number, Token &type);

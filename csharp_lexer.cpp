@@ -90,6 +90,8 @@ void CSharpLexer::_tokenize() {
 	}
 
 
+	
+
 	if (code_pos >= len) {
 		_make_token(TK_EOF);
 		return;
@@ -97,7 +99,8 @@ void CSharpLexer::_tokenize() {
 
 	while (true) {
 
-		std::cout << "code_pos is: " << code_pos << std::endl;
+		verbatim_mode = false;
+
 		switch (GETCHAR(0)) {
 
 			// ----- ----- -----
@@ -108,9 +111,24 @@ void CSharpLexer::_tokenize() {
 			}
 			case '@': {
 				std::cout << "@" << std::endl;
-				// TODO READ WORD
+				verbatim_mode = true;
 				INCPOS(1);
-				break;
+			}
+			case '#': {
+				INCPOS(1);
+				// TODO readuntil newline and add token DIRECTIVE, what if multiline directive?
+			}
+			case '\'': {
+				INCPOS(1); // skip ' char
+				String char_literal = read_char_literal();
+				_make_token(TK_LT_CHAR, char_literal);
+				INCPOS(1); // skip ' char
+			}
+			case '\"': {
+				INCPOS(1); // skip " char
+				String string_literal = read_string_literal();
+				_make_token(TK_LT_STRING, string_literal);
+				INCPOS(1); // skip " char
 			}
 			case 0xFFFF: {
 				std::cout << "CURSOR" << std::endl;
@@ -121,11 +139,11 @@ void CSharpLexer::_tokenize() {
 			case '/': {
 				if (GETCHAR(1) == '/') {
 					INCPOS(2);
-					skip_untill_newline();
+					skip_until_newline();
 					break;
 				} else if (GETCHAR(1) == '*') {
 					INCPOS(2);
-					skip_untill_str("*/");
+					skip_until("*/");
 					break;
 				}
 			}
@@ -174,7 +192,8 @@ void CSharpLexer::_tokenize() {
 						else
 							_make_token(type);
 					} else {
-						// TODO error
+						_make_token(TK_ERROR);
+						skip_until_whitespace();
 					}
 				}
 
@@ -190,7 +209,8 @@ void CSharpLexer::_tokenize() {
 					if (read_number(number, type)) {
 						_make_token(type, number);
 					} else {
-						skip_untill_whitespace();
+						_make_token(TK_ERROR);
+						skip_until_whitespace();
 					}
 
 				}
@@ -201,7 +221,7 @@ void CSharpLexer::_tokenize() {
 					if (read_special_char(type)) {
 						_make_token(type);
 					} else {
-						// TODO unknown char ... error?
+						_make_token(TK_ERROR);
 					}
 				}
 
@@ -220,18 +240,18 @@ void CSharpLexer::_tokenize() {
 
 
 
-void CSharpLexer::skip_untill_newline() {
+String CSharpLexer::skip_until_newline() {
 
-	std::cout << "skip_until_newline()" << std::endl;
-
-	CharType c;
-	while ((c = GETCHAR(0)) != '\n')
-		INCPOS(1);
+	CharType c; String res = "";
+	while ((c = GETCHAR(0)) != '\n') {
+		 res += c; INCPOS(1);
+	}
 
 	INCPOS(1);
 	column = 0;
 	line++;
 
+	return res;
 }
 
 void CSharpLexer::skip_whitespace() {
@@ -241,20 +261,56 @@ void CSharpLexer::skip_whitespace() {
 		INCPOS(1);
 }
 
-void CSharpLexer::skip_untill_whitespace() {
+String CSharpLexer::skip_until_whitespace() {
 
-	CharType c;
-	while ((c = GETCHAR(0)) > 0 && !_is_whitespace(c))
-		INCPOS(1);
+	CharType c; String res = "";
+	while ((c = GETCHAR(0)) > 0 && !_is_whitespace(c)) {
+		res += c; INCPOS(1);
+	}
+
+	return res;
 }
 
-void CSharpLexer::skip_untill_str(String str) {
+// returns skipped string
+String CSharpLexer::skip_until(String str) {
 
-	std::cout << "skip_until_str()" << std::endl;
+	CharType c; String res = "";
+	while ((c = GETCHAR(0)) > 0 && !_code.substr(code_pos).begins_with(str)) {
+		res += c; INCPOS(1);
+	}
 
-	CharType c;
-	while ((c = GETCHAR(0)) > 0 && !_code.substr(code_pos).begins_with(str))
-		INCPOS(1);
+	return res;
+}
+
+String CSharpLexer::read_char_literal() {
+
+	String res = "";
+	if (GETCHAR(0) == '\\') { res += GETCHAR(0) + GETCHAR(1);	INCPOS(2); }
+	else					{ res += GETCHAR(0); 				INCPOS(1); }
+
+	return res;
+}
+
+String CSharpLexer::read_string_literal() {
+
+	// TODO $ mode
+
+	CharType c; String res = "";
+	while ((c = GETCHAR(0)) > 0) {
+
+		if (verbatim_mode) {
+			if (c == '"' && GETCHAR(1) == '"')	 { res += "\"\""; INCPOS(2);		}
+			else if (c == '"')					 {				  INCPOS(1); break; }
+			else								 { res += c;	  INCPOS(1);		}
+		} else {
+			if (c == '\\' && GETCHAR(1) == '\"') { res += "\\\""; INCPOS(2);		}
+			else if (c == '\"')					 {				  INCPOS(1); break; }
+			else								 { res += c;	  INCPOS(1);		}
+		}		
+	}
+
+	return res;
+
 }
 
 void CSharpLexer::set_code(const String &code) {
