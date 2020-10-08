@@ -43,7 +43,7 @@ public:
 		// context-keyword
 		TK_KW_ADD, TK_KW_ASCENDING, TK_KW_ASYNC, TK_KW_AWAIT, TK_KW_BY,
 		TK_KW_DESCENDING, TK_KW_DYNAMIC, TK_KW_EQUALS, TK_KW_FROM, TK_KW_GET,
-		TK_KW_GLOBAL, TK_KW_GROUP, TK_KW_IN, TK_KW_INTO, TK_KW_JOIN,
+		TK_KW_GLOBAL, TK_KW_GROUP,        TK_KW_INTO, TK_KW_JOIN,
 		TK_KW_LET, TK_KW_NAMEOF, TK_KW_ON, TK_KW_ORDERBY, TK_KW_PARTIAL,
 		TK_KW_REMOVE, TK_KW_SELECT, TK_KW_SET, TK_KW_VALUE, TK_KW_VAR,
 		TK_KW_WHEN, TK_KW_WHERE, TK_KW_YIELD,
@@ -80,7 +80,7 @@ public:
 		int column;
 	};
 
-	List<TokenData> *tokens;
+	List<TokenData> tokens;
 
 	const int RESERVED_KEYWORDS_BEGIN = TK_KW_ABSTRACT;
 	const int RESERVED_KEYWORDS_END = TK_KW_WHILE;
@@ -91,12 +91,11 @@ public:
 
 
 
-	protected:
+	public:
 	static const char *token_names[TK_MAX];
 
 public:
 	void tokenize(); // start tokenize procedure
-	List<TokenData> get_tokens() const; // creates new list of tokens
 	void clear(); // clear state of current object (prepare to tokenize again)
 	void print_tokens();
 	void set_code(const String &code);
