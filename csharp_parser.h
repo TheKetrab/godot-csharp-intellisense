@@ -36,7 +36,14 @@
 
 using namespace std;
 #include <map>
+#include <iostream>
+const int TAB = 2;
+
 class CSharpParser {
+
+
+	
+	static void indentation(int n);
 
 	// declarations
 	struct Node;
@@ -62,22 +69,44 @@ class CSharpParser {
 		int line;
 		int column;
 
-		int32_t modifiers;
+		int modifiers;
 		vector<string> attributes;
 		
 		Node *parent;
-
+		string name;
 
 		Node() {}
 		Node(const CSharpLexer::TokenData td) {
 			this->line = td.line;
 			this->column = td.column;
 		}
+
+		virtual void print(int indent) = 0;
+
+		template <class T>
+		void print_header(int indent, vector<T *> &v, string title) {
+
+			indentation(indent);
+			cout << title << " ";
+			for (T *t : v)
+				cout << t->name << " ";
+			cout << endl;
+		}
+
+		void print_variables(int indent, vector<VarInfo> &v, string title) {
+
+			indentation(indent);
+			cout << title << " ";
+			for (VarInfo vi : v)
+				cout << vi.name << " ";
+			cout << endl;
+		}
+
 	};
 
 	struct VarInfo {
-		String name;
-		String type;
+		string name;
+		string type;
 		bool is_const;
 	};
 
@@ -86,33 +115,26 @@ class CSharpParser {
 
 		
 		ClassNode *base_class;
-		vector<InterfaceNode*> implemented_interfaces;
+		vector<InterfaceNode*> impl_interfaces;
 
 		// members:
 		vector<VarInfo> variables;
-		vector<VarInfo> static_variables;
-
 		vector<MethodNode*> methods;
-		vector<MethodNode*> static_methods;
-
 		vector<ClassNode*> classes;
 		vector<InterfaceNode*> interfaces;
 		vector<StructNode*> structures;
 		vector<EnumNode*> enums;
 		vector<PropertyNode *> properties;
 
-		bool is_partial;
-		bool is_static;
-		bool is_generic;
+		void print(int indent) override;
 
 		ClassNode() {}
 	};
 
 	struct StructNode : public Node {
 
-		string name;
-		ClassNode *base_class;
-		vector<InterfaceNode*> implemented_interfaces;
+		StructNode *base_struct;
+		vector<InterfaceNode*> impl_interfaces;
 
 		// members:
 		vector<VarInfo> variables;
@@ -127,9 +149,7 @@ class CSharpParser {
 		vector<EnumNode *> enums;
 		vector<PropertyNode *> properties;
 
-		bool is_partial;
-		bool is_static;
-		bool is_generic;
+		void print(int indent) override;
 	};
 
 
@@ -139,17 +159,18 @@ class CSharpParser {
 	struct StatementNode : public Node {
 
 		StatementNode *next;
+		void print(int indent) override;
 	};
 
-	struct BlockNode : StatementNode {
-
-	};
-
-	struct ConditionNode : public Node {
+	struct BlockNode : public StatementNode {
 
 	};
 
-	struct LoopNode : StatementNode {
+	struct ConditionNode : public StatementNode {
+
+	};
+
+	struct LoopNode : public StatementNode {
 
 		enum Type {
 			DO, FOR, FOREACH, WHILE
@@ -162,33 +183,41 @@ class CSharpParser {
 
 	};
 
-	struct DeclarationNode : StatementNode {
+	struct DeclarationNode : public StatementNode {
 		VarInfo variable;
 	};
 
-	struct JumpNode : StatementNode {
+	struct JumpNode : public StatementNode {
 
 	};
 
-	struct TryNode : StatementNode {
+	struct TryNode : public StatementNode {
 
 	};
 
-	struct UsingNode : StatementNode {
+	struct UsingNode : public StatementNode {
 
 	};
 	// ----- ----- ----- ----- -----
 
 
-	struct MethodNode : Node {
+	struct MethodNode : public Node {
 		string type;
-		vector<VarInfo> arguments; 
+		vector<VarInfo> arguments;
+
+		void print(int indent) override;
+	};
+
+	struct PropertyNode : public Node {
+		// todo info about get set
+
+		void print(int indent) override;
 	};
 
 	// w namespace'ie sa inne namespace'y i klasy
 	// using directives refers ONLY to current namespace or global(aka filenode)
 	// N1 { using System; } ... N1 { SYSTEM NOT VISIBLE !!! }
-	struct NamespaceNode : Node {
+	struct NamespaceNode : public Node {
 		vector<NamespaceNode*> napespaces;
 		vector<ClassNode*> classes;
 		vector<StructNode*> structures;
@@ -199,9 +228,11 @@ class CSharpParser {
 		vector<string> using_static_directives;
 
 		NamespaceNode();
+
+		void print(int indent) override;
 	};
 
-	struct InterfaceNode : Node {
+	struct InterfaceNode : public Node {
 
 		string name;
 		vector<InterfaceNode> implemented_interfaces;
@@ -210,35 +241,37 @@ class CSharpParser {
 		vector<MethodNode*> methods;
 		vector<PropertyNode*> properties;
 
-		bool is_partial;
-		bool is_static;
-		bool is_generic;
+
+		void print(int indent) override;
 
 	};
 
-	struct EnumNode : Node {
+	struct EnumNode : public Node {
 
 		string type = "int"; // domyslnie int
 		vector<string> members;
 		EnumNode() {}
 		// todo
+
+		void print(int indent) override;
 	};
 
-	struct DelegateNode : Node {
+	struct DelegateNode : public Node {
 		// todo
 	};
 
 
+	// ----- ----- -----
+	// CLASS
 
 	Node *root;		// glowny wezel pliku
-	Node *current; // dla parsera (to gdzie jest podczas parsowania)
+	Node *current;  // dla parsera (to gdzie jest podczas parsowania)
 	Node *cursor;   // wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
 
 	int pos;
 	int len; // ilosc tokenow
-	string name;
 
-	int32_t modifiers;
+	int modifiers;
 	List<CSharpLexer::TokenData> tokens;
 	vector<string> attributes;
 
@@ -246,16 +279,17 @@ public:
 	// constructors
 	CSharpParser(List<CSharpLexer::TokenData> &tokens);
 	CSharpParser(String code);
+	CSharpParser();
+
+	void set_tokens(List<CSharpLexer::TokenData> &tokens);
 
 	// methods
 	void parse(); // parse tokens to tree-structure
+	void clear(); // set state to zero
 
 private:
-	public:
 
-
-
-	NamespaceNode *parse_namespace();
+	NamespaceNode *parse_namespace(bool global);
 	ClassNode *parse_class();
 	StructNode *parse_struct();
 	InterfaceNode *parse_interface();
@@ -280,7 +314,7 @@ private:
 	
 
 	// for mask
-	static enum Modifier {
+	enum Modifier {
 		MOD_PUBLIC			= 1,
 		MOD_PROTECTED		= 1 << 1,
 		MOD_PRIVATE			= 1 << 2,
@@ -301,15 +335,14 @@ private:
 public:
 	static map<CSharpLexer::Token, Modifier> to_modifier;
 
-	int32_t modifiers;
-
+	
 	void parse_modifiers();
 	void parse_attributes();
 
 	void apply_attributes(Node *node); // to co nazbieral info aplikuje
 	void apply_modifiers(Node *node);
 
-	void parse_using_directives();
+	void parse_using_directives(NamespaceNode* node);
 	void parse_class_member(ClassNode *node);
 	void parse_interface_member(InterfaceNode *node);
 	void parse_enum_member(EnumNode *node);
@@ -323,7 +356,14 @@ public:
 		int bracket_depth = 0;
 		int parenthesis_depth = 0;
 
-	};
-};
+		bool operator==(const struct Depth &d) {
+			return curly_bracket_depth == d.curly_bracket_depth
+				&& bracket_depth == d.bracket_depth
+				&& parenthesis_depth == d.parenthesis_depth;
+		}
+	} depth;
 
+	
+};
+	
 #endif // CSHARP_PARSER_H
