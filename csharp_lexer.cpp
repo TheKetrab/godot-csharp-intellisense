@@ -29,7 +29,7 @@ const char *CSharpLexer::token_names[TK_MAX] = {
 	// context-keyword
 	"add", "ascending", "async", "await", "by",
 	"descending", "dynamic", "equals", "from", "get",
-	"global", "group", "in", "into", "join",
+	"global", "group",       "into", "join",
 	"let", "nameof", "on", "orderby", "partial",
 	"remove", "select", "set", "value", "var",
 	"when", "where", "yield",
@@ -60,7 +60,7 @@ const char *CSharpLexer::token_names[TK_MAX] = {
 #include <iostream>
 
 void CSharpLexer::clear() {
-	tokens = new List<TokenData>();
+	tokens.clear();
 
 	line = 0;
 	column = 0;
@@ -326,8 +326,7 @@ bool CSharpLexer::read_word(String &word, Token &type) {
 		INCPOS(1); word += c;
 	}
 
-	std::cout << "word is: " << word.ascii().get_data() << std::endl;
-
+	// TODO if verbatim nothing is keyword
 	_is_keyword(word, type);
 	return true;
 }
@@ -578,7 +577,7 @@ bool CSharpLexer::read_special_char(Token& type) {
 
 void CSharpLexer::_make_token(Token p_type, String data) {
 	TokenData td = { p_type, data, line, column };
-	tokens->push_back(td);
+	tokens.push_back(td);
 }
 
 void CSharpLexer::_make_identifier(const StringName& p_identifier) {
@@ -640,10 +639,10 @@ bool CSharpLexer::_is_whitespace(CharType c) {
 #include <iostream>
 void CSharpLexer::print_tokens() {
 
-	int n = tokens->size();
+	int n = tokens.size();
 	for (int i=0; i<n; i++) {
 
-		TokenData td = (*tokens)[i];
+		TokenData td = tokens[i];
 
 		// token name
 		std::cout << token_names[td.type];
@@ -652,6 +651,8 @@ void CSharpLexer::print_tokens() {
 		switch (td.type) {
 			case TK_LT_INTEGER:
 			case TK_LT_REAL:
+			case TK_LT_CHAR:
+			case TK_LT_STRING:
 			case TK_IDENTIFIER: {
 				std::cout << "(" << td.data.ascii().get_data() << ")";
 				break;
@@ -664,3 +665,5 @@ void CSharpLexer::print_tokens() {
 	}
 
 }
+
+
