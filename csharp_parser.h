@@ -183,7 +183,9 @@ class CSharpParser {
 	};
 
 	struct JumpNode : public StatementNode {
-
+		enum class Type {
+			BREAK, CONTINUE, GOTO, RETURN, YIELD, THROW
+		};
 	};
 
 	struct TryNode : public StatementNode {
@@ -299,7 +301,8 @@ private:
 	StatementNode* parse_statement();
 	MethodNode* parse_method(string name, string return_type);
 	BlockNode* parse_block();
-
+	ConditionNode* parse_if_statement();
+	ConditionNode* parse_switch_statement();
 
 	DelegateNode* parse_delegate();
 	string parse_type();

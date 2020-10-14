@@ -4,6 +4,41 @@
 using CST = CSharpLexer::Token;
 using CSM = CSharpParser::Modifier;
 
+
+
+#define CASEBASETYPE case CST::TK_KW_BOOL: \
+		case CST::TK_KW_BYTE: \
+		case CST::TK_KW_CHAR: \
+		case CST::TK_KW_DECIMAL: \
+		case CST::TK_KW_DOUBLE: \
+		case CST::TK_KW_FLOAT: \
+		case CST::TK_KW_LONG: \
+		case CST::TK_KW_OBJECT: \
+		case CST::TK_KW_SBYTE: \
+		case CST::TK_KW_SHORT: \
+		case CST::TK_KW_STRING: \
+		case CST::TK_KW_UINT: \
+		case CST::TK_KW_ULONG: \
+		case CST::TK_KW_USHORT: \
+		case CST::TK_KW_VOID:
+
+#define CASEMODIFIER case CST::TK_KW_PUBLIC: \
+		case CST::TK_KW_PROTECTED: \
+		case CST::TK_KW_PRIVATE: \
+		case CST::TK_KW_INTERNAL: \
+		case CST::TK_KW_EXTERN: \
+		case CST::TK_KW_ABSTRACT: \
+		case CST::TK_KW_CONST: \
+		case CST::TK_KW_OVERRIDE: \
+		case CST::TK_KW_PARTIAL: \
+		case CST::TK_KW_READONLY: \
+		case CST::TK_KW_SEALED: \
+		case CST::TK_KW_STATIC: \
+		case CST::TK_KW_UNSAFE: \
+		case CST::TK_KW_VIRTUAL: \
+		case CST::TK_KW_VOLATILE:
+
+
 void CSharpParser::indentation(int n) {
 	cout << string(n, ' ');
 }
@@ -98,21 +133,7 @@ void CSharpParser::parse_modifiers() {
 
 		switch (tokens[pos].type) {
 
-		case CST::TK_KW_PUBLIC:
-		case CST::TK_KW_PROTECTED:
-		case CST::TK_KW_PRIVATE:
-		case CST::TK_KW_INTERNAL:
-		case CST::TK_KW_EXTERN:
-		case CST::TK_KW_ABSTRACT:
-		case CST::TK_KW_CONST:
-		case CST::TK_KW_OVERRIDE:
-		case CST::TK_KW_PARTIAL:
-		case CST::TK_KW_READONLY:
-		case CST::TK_KW_SEALED:
-		case CST::TK_KW_STATIC:
-		case CST::TK_KW_UNSAFE:
-		case CST::TK_KW_VIRTUAL:
-		case CST::TK_KW_VOLATILE: {
+		CASEMODIFIER {
 			pos++;
 			modifiers |= (int)to_modifier[tokens[pos].type];
 			break;
@@ -534,22 +555,8 @@ std::string CSharpParser::parse_type() {
 			}
 		}
 
-								  // base type?
-		case CST::TK_KW_BOOL:
-		case CST::TK_KW_BYTE:
-		case CST::TK_KW_CHAR:
-		case CST::TK_KW_DECIMAL:
-		case CST::TK_KW_DOUBLE:
-		case CST::TK_KW_FLOAT:
-		case CST::TK_KW_LONG:
-		case CST::TK_KW_OBJECT:
-		case CST::TK_KW_SBYTE:
-		case CST::TK_KW_SHORT:
-		case CST::TK_KW_STRING:
-		case CST::TK_KW_UINT:
-		case CST::TK_KW_ULONG:
-		case CST::TK_KW_USHORT:
-		case CST::TK_KW_VOID: {
+		// base type?
+		CASEBASETYPE {
 
 			cout << "base type!" << endl;
 
@@ -917,7 +924,91 @@ CSharpParser::UsingNode* CSharpParser::parse_using() {
 	return nullptr; // todo
 }
 
+
+CSharpParser::ConditionNode* CSharpParser::parse_if_statement() {
+	return nullptr;
+}
+CSharpParser::ConditionNode* CSharpParser::parse_switch_statement() {
+	return nullptr;
+}
+
+
 CSharpParser::StatementNode* CSharpParser::parse_statement() {
+	
+	switch (GETTOKEN(0)) {
+
+	CASEBASETYPE {
+		DeclarationNode* node = parse_declaration();
+		return node;
+	}
+	case CST::TK_IDENTIFIER: {
+		// todo
+		// declaration of custom type
+		// function invocation
+		// expression
+		// assignment
+	}
+	case CST::TK_KW_FOR:
+	case CST::TK_KW_WHILE:
+	case CST::TK_KW_FOREACH:
+	case CST::TK_KW_DO: {
+		LoopNode* node = parse_loop();
+		return node;
+	}
+
+	// CONDITION STATEMENT
+	case CST::TK_KW_IF: {
+		ConditionNode* node = parse_if_statement();
+		return node;
+	}
+	case CST::TK_KW_SWITCH: {
+		ConditionNode* node = parse_switch_statement();
+		return node;
+	}
+
+	// JUMP STATEMENT
+	case CST::TK_KW_BREAK: 
+	case CST::TK_KW_CONTINUE:
+	{
+		// todo
+	}
+	case CST::TK_KW_GOTO: {
+		// todo
+	}
+	case CST::TK_KW_RETURN: {
+		// todo
+	}
+	case CST::TK_KW_YIELD: {
+		// todo
+	}
+	case CST::TK_KW_THROW: {
+		// todo
+	}
+
+	// TRY-CATCH-FINALLY
+	case CST::TK_KW_TRY: {
+		// todo
+	}
+
+	// OTHER
+	case CST::TK_KW_AWAIT: {
+		// todo
+	}
+	case CST::TK_KW_FIXED: {
+		// todo
+	}
+	case CST::TK_KW_LOCK: {
+		// todo
+	}
+	case CST::TK_SEMICOLON: {
+		// todo (empty statement -> ';')
+	}
+
+
+
+
+	}
+
 	return nullptr;
 }
 
