@@ -98,7 +98,10 @@ void CSharpLexer::_tokenize() {
 	while (true) {
 
 		verbatim_mode = false;
-
+		cout << code_pos << endl;
+		if (code_pos == 639) {
+			int x = 3;
+		}
 		switch (GETCHAR(0)) {
 
 				// ----- ----- -----

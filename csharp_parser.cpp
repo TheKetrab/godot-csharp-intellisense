@@ -44,7 +44,9 @@ using CSM = CSharpParser::Modifier;
 		case CST::TK_LT_REAL: \
 		case CST::TK_LT_CHAR: \
 		case CST::TK_LT_STRING: \
-		case CST::TK_LT_INTERPOLATED:
+		case CST::TK_LT_INTERPOLATED: \
+		case CST::TK_KW_TRUE: \
+		case CST::TK_KW_FALSE:
 
 void CSharpParser::indentation(int n) {
 	cout << string(n, ' ');
@@ -118,8 +120,6 @@ void CSharpParser::parse() {
 }
 
 void CSharpParser::clear() {
-
-	cout << "PARSER: clear" << endl;
 
 	cursor = nullptr;
 	current = nullptr;
@@ -209,8 +209,6 @@ void CSharpParser::apply_modifiers(CSharpParser::Node* node) {
 // read file = read namespace (even 'no-namespace')
 // global -> for file parsing (no name parsing and keyword namespace)
 CSharpParser::NamespaceNode* CSharpParser::parse_namespace(bool global = false) {
-
-	cout << "PARSER: parse_namespace" << endl;
 
 	string name = "global";
 	if (!global) {
@@ -329,8 +327,6 @@ void CSharpParser::parse_possible_type_parameter_node(Node* node) {
 
 CSharpParser::ClassNode* CSharpParser::parse_class() {
 
-	cout << "PARSER: parse_class" << endl;
-
 	// is class?
 	if (GETTOKEN(0) != CST::TK_KW_CLASS) return nullptr;
 	INCPOS(1);
@@ -345,10 +341,8 @@ CSharpParser::ClassNode* CSharpParser::parse_class() {
 	apply_attributes(node);
 	apply_modifiers(node);
 
-	cout << " -- 1 -- " << endl;
 	// parse generic params, base class and interfaces <-- todo zrobic z tego funkcje
 	parse_possible_type_parameter_node(node); // wstrzykuje do klasy info z tego co jest za nazwa klasy
-	cout << " -- 2 -- " << endl;
 
 	while (parse_class_member(node));
 
@@ -564,8 +558,6 @@ CSharpParser::DelegateNode* CSharpParser::parse_delegate() {
 
 std::string CSharpParser::parse_type() {
 
-	cout << "parse type" << endl;
-
 	std::string res = "";
 
 	// base type: int/bool/... (nullable ?) [,,...,]
@@ -656,8 +648,6 @@ std::string CSharpParser::parse_type() {
 		// base type?
 		CASEBASETYPE {
 
-			cout << "base type!" << endl;
-
 			if (complex_type) {
 				// TODO error -> System.Reflexion.int ??????
 				// vector<int> still allowed, cause int will be parsed recursively
@@ -682,8 +672,6 @@ std::string CSharpParser::parse_type() {
 				// TODO error
 			}
 
-			cout << "identifier: " << TOKENDATA(0) << endl;
-
 			complex_type = true;
 			res += TOKENDATA(0);
 			INCPOS(1);
@@ -696,7 +684,6 @@ std::string CSharpParser::parse_type() {
 			}
 		}
 		default: {
-			cout << "UNKNOWN IDENTIFIER: ";
 			debug_info();
 		}
 		}
@@ -706,9 +693,6 @@ std::string CSharpParser::parse_type() {
 }
 
 void CSharpParser::parse_using_directives(NamespaceNode* node) {
-
-	cout << "parse using directives" << endl;
-
 
 	// TODO nieskonczone
 
@@ -838,7 +822,6 @@ void CSharpParser::debug_info() {
 
 bool CSharpParser::parse_class_member(ClassNode* node) {
 
-	cout << "parse class member" << endl;
 	debug_info();
 
 
@@ -882,7 +865,6 @@ bool CSharpParser::parse_class_member(ClassNode* node) {
 
 		// field (var), property or method
 		string type = parse_type();
-		cout << "found type is: " << type << endl;
 
 		// expected name
 		if (GETTOKEN(0) != CST::TK_IDENTIFIER)
@@ -914,7 +896,6 @@ bool CSharpParser::parse_class_member(ClassNode* node) {
 		else if (GETTOKEN(0) == CST::TK_PARENTHESIS_OPEN) {
 
 			MethodNode* member = parse_method(name, type);
-			cout << "method parsed, pos is:" << pos <<endl;
 			if (member != nullptr) node->methods.push_back(member);
 			break;
 
@@ -1068,7 +1049,56 @@ CSharpParser::UsingNode* CSharpParser::parse_using() {
 
 
 CSharpParser::ConditionNode* CSharpParser::parse_if_statement() {
-	return nullptr;
+	
+	// if ( expr ) statement else statement
+	ConditionNode* node = new ConditionNode();
+
+	if (GETTOKEN(0) != CST::TK_KW_IF) {
+		// todo error
+	}
+
+	INCPOS(1);
+	node->raw = "if ";
+
+	if (GETTOKEN(0) != CST::TK_PARENTHESIS_OPEN) {
+		// todo error
+	}
+
+	INCPOS(1);
+	node->raw += "(";
+
+	string expression = parse_expression();
+	node->raw += expression;
+
+	if (GETTOKEN(0) != CST::TK_PARENTHESIS_CLOSE) {
+		// todo error
+	}
+
+	INCPOS(1);
+	node->raw += ") ";
+
+	StatementNode* then = parse_statement();
+	if (then == nullptr) {
+		// TODO error
+	}
+
+	node->raw += then->raw;
+
+	// optional else
+	if (GETTOKEN(0) == CST::TK_KW_ELSE) {
+
+		INCPOS(1);
+		node->raw += " else ";
+		StatementNode* else_st = parse_statement();
+		if (else_st == nullptr) {
+			// todo error
+		}
+		node->raw += else_st->raw;
+
+	}
+
+	return node;
+
 }
 CSharpParser::ConditionNode* CSharpParser::parse_switch_statement() {
 	return nullptr;
@@ -1181,7 +1211,10 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 		// todo
 	}
 	case CST::TK_SEMICOLON: {
-		// todo (empty statement -> ';')
+		StatementNode* node = new StatementNode();
+		node->raw = ";";
+		INCPOS(1);
+		return node; // empty statement
 	}
 
 

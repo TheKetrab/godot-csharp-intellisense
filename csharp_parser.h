@@ -153,7 +153,7 @@ class CSharpParser {
 	//		STATEMENT NODE
 	// ----- ----- ----- ----- -----
 	struct StatementNode : public Node {
-
+		// TODO parse label statement: identifier ":" statement (dla goto, etykiety)
 		string raw;
 		StatementNode* next = nullptr;
 		void print(int indent) override;
@@ -307,7 +307,6 @@ private:
 	UsingNode* parse_using();
 	StatementNode* parse_statement();
 	string parse_expression();
-	string parse_expression_or_assignment();
 	MethodNode* parse_method(string name, string return_type);
 	BlockNode* parse_block();
 	ConditionNode* parse_if_statement();
