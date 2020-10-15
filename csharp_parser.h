@@ -98,6 +98,7 @@ class CSharpParser {
 
 	struct VarNode : public Node {
 		string type;
+		string value;
 
 		void print(int indent) override;
 		VarNode() : type("") {}
@@ -155,6 +156,11 @@ class CSharpParser {
 
 		StatementNode* next = nullptr;
 		void print(int indent) override;
+	};
+
+	struct ExpressionNode : public StatementNode {
+
+		string expression;
 	};
 
 	struct BlockNode : public StatementNode {
@@ -299,6 +305,7 @@ private:
 	TryNode* parse_try();
 	UsingNode* parse_using();
 	StatementNode* parse_statement();
+	string parse_expression();
 	MethodNode* parse_method(string name, string return_type);
 	BlockNode* parse_block();
 	ConditionNode* parse_if_statement();
@@ -306,6 +313,8 @@ private:
 
 	DelegateNode* parse_delegate();
 	string parse_type();
+
+	void debug_info();
 
 	// skipuje az do danego tokena, ktory jest na takim poziomie zaglebienia parsera w blokach (depth)
 	void skip_until_token(CSharpLexer::Token tk);
@@ -346,7 +355,7 @@ public:
 	void apply_modifiers(Node* node);
 
 	void parse_using_directives(NamespaceNode* node);
-	void parse_class_member(ClassNode* node);
+	bool parse_class_member(ClassNode* node);
 	bool parse_namespace_member(NamespaceNode* node);
 	void parse_interface_member(InterfaceNode* node);
 	void parse_enum_member(EnumNode* node);

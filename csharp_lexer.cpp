@@ -111,22 +111,26 @@ void CSharpLexer::_tokenize() {
 				std::cout << "@" << std::endl;
 				verbatim_mode = true;
 				INCPOS(1);
+				break;
 			}
 			case '#': {
 				INCPOS(1);
 				// TODO readuntil newline and add token DIRECTIVE, what if multiline directive?
+				break;
 			}
 			case '\'': {
 				INCPOS(1); // skip ' char
 				string char_literal = read_char_literal();
 				_make_token(CST::TK_LT_CHAR, char_literal);
 				INCPOS(1); // skip ' char
+				break;
 			}
 			case '\"': {
 				INCPOS(1); // skip " char
 				string string_literal = read_string_literal();
 				_make_token(CST::TK_LT_STRING, string_literal);
 				INCPOS(1); // skip " char
+				break;
 			}
 			case 0xFFFF: {
 				std::cout << "CURSOR" << std::endl;
@@ -293,12 +297,12 @@ string CSharpLexer::read_string_literal() {
 
 		if (verbatim_mode) {
 			if (c == '"' && GETCHAR(1) == '"') { res += "\"\""; INCPOS(2); }
-			else if (c == '"') { INCPOS(1); break; }
+			else if (c == '"') { break; }
 			else { res += c;	  INCPOS(1); }
 		}
 		else {
 			if (c == '\\' && GETCHAR(1) == '\"') { res += "\\\""; INCPOS(2); }
-			else if (c == '\"') { INCPOS(1); break; }
+			else if (c == '\"') { break; }
 			else { res += c;	  INCPOS(1); }
 		}
 	}
@@ -605,6 +609,10 @@ bool CSharpLexer::_is_keyword(const string& word, Token& type) const {
 	return false;
 }
 
+bool CSharpLexer::is_operator(Token& type) {
+	return (int)type >= (int)CSharpLexer::OPS_BEGIN && (int)type <= (int)CSharpLexer::OPS_END;
+}
+
 bool CSharpLexer::_is_text_char(char c) {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
@@ -636,30 +644,38 @@ bool CSharpLexer::_is_whitespace(char c) {
 void CSharpLexer::print_tokens() {
 
 	int n = tokens.size();
-	for (int i = 0; i < n; i++) {
+	int i = 0;
+	while (i < n) {
+		cout << "(" << i << ") --> ";
+		for (int j = 0; j < 10 && i < n; j++) {
 
-		TokenData td = tokens[i];
+			TokenData td = tokens[i];
 
-		// token name
-		std::cout << token_names[(int)td.type];
+			// token name
+			cout << token_names[(int)td.type];
 
-		// print details
-		switch (td.type) {
-		case CST::TK_LT_INTEGER:
-		case CST::TK_LT_REAL:
-		case CST::TK_LT_CHAR:
-		case CST::TK_LT_STRING:
-		case CST::TK_IDENTIFIER: {
-			std::cout << "(" << td.data << ")";
-			break;
+			// print details
+			switch (td.type) {
+			case CST::TK_LT_INTEGER:
+			case CST::TK_LT_REAL:
+			case CST::TK_LT_CHAR:
+			case CST::TK_LT_STRING:
+			case CST::TK_IDENTIFIER: {
+				cout << "(" << td.data << ")";
+				break;
+			}
+			default: break;
+			}
+
+			// separator
+			cout << " ";
+			i++;
 		}
-		default: break;
-		}
-
-		// separator
-		std::cout << " ";
+		cout << endl;
 	}
-
 }
+
+
+
 
 

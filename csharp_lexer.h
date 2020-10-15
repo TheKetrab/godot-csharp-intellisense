@@ -103,6 +103,7 @@ public:
 	static bool _is_bin(char c);
 	static bool _is_whitespace(char c);
 
+
 private:
 	string _code;  // code to analyze
 	int len;      // length of the code
@@ -139,7 +140,7 @@ public:
 	bool read_number(string& number, Token& type);
 	bool read_special_char(Token& type);
 	bool _is_keyword(const string& word, Token& type) const;
-
+	static bool is_operator(Token& type);
 };
 
 

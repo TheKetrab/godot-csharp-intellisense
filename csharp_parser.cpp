@@ -11,7 +11,9 @@ using CSM = CSharpParser::Modifier;
 		case CST::TK_KW_CHAR: \
 		case CST::TK_KW_DECIMAL: \
 		case CST::TK_KW_DOUBLE: \
+		case CST::TK_KW_DYNAMIC: \
 		case CST::TK_KW_FLOAT: \
+		case CST::TK_KW_INT: \
 		case CST::TK_KW_LONG: \
 		case CST::TK_KW_OBJECT: \
 		case CST::TK_KW_SBYTE: \
@@ -38,6 +40,11 @@ using CSM = CSharpParser::Modifier;
 		case CST::TK_KW_VIRTUAL: \
 		case CST::TK_KW_VOLATILE:
 
+#define CASELITERAL case CST::TK_LT_INTEGER: \
+		case CST::TK_LT_REAL: \
+		case CST::TK_LT_CHAR: \
+		case CST::TK_LT_STRING: \
+		case CST::TK_LT_INTERPOLATED:
 
 void CSharpParser::indentation(int n) {
 	cout << string(n, ' ');
@@ -123,6 +130,7 @@ void CSharpParser::clear() {
 }
 
 #define GETTOKEN(ofs) ((ofs + pos) >= len ? CST::TK_ERROR : tokens[ofs + pos].type)
+#define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
 #define INCPOS(ammount) { pos += ammount; }
 
 
@@ -131,11 +139,11 @@ void CSharpParser::parse_modifiers() {
 	this->modifiers = 0;
 	while (true) {
 
-		switch (tokens[pos].type) {
+		switch (GETTOKEN(0)) {
 
 		CASEMODIFIER {
 			pos++;
-			modifiers |= (int)to_modifier[tokens[pos].type];
+			modifiers |= (int)to_modifier[GETTOKEN(0)];
 			break;
 		}
 		default: {
@@ -182,7 +190,7 @@ void CSharpParser::parse_attributes() {
 		}
 		default: {
 			if (bracket_depth == 0) return;
-			else attribute += tokens[pos].data + " ";
+			else attribute += TOKENDATA(0) + " ";
 			INCPOS(1);
 		}
 		}
@@ -215,7 +223,7 @@ CSharpParser::NamespaceNode* CSharpParser::parse_namespace(bool global = false) 
 		if (GETTOKEN(0) != CST::TK_IDENTIFIER)
 			return nullptr;
 		else {
-			name = tokens[pos].data;
+			name = TOKENDATA(0);
 			INCPOS(1);
 		}
 	}
@@ -331,7 +339,7 @@ CSharpParser::ClassNode* CSharpParser::parse_class() {
 	if (GETTOKEN(0) != CST::TK_IDENTIFIER) return nullptr;
 
 	ClassNode* node = new ClassNode();
-	node->name = tokens[pos].data;
+	node->name = TOKENDATA(0);
 	INCPOS(1);
 
 	apply_attributes(node);
@@ -342,13 +350,88 @@ CSharpParser::ClassNode* CSharpParser::parse_class() {
 	parse_possible_type_parameter_node(node); // wstrzykuje do klasy info z tego co jest za nazwa klasy
 	cout << " -- 2 -- " << endl;
 
-	while (GETTOKEN(0) != CST::TK_CURLY_BRACKET_CLOSE) {
-		parse_class_member(node);
-	}
+	while (parse_class_member(node));
 
 	INCPOS(1);
 
 	return node;
+}
+
+string CSharpParser::parse_expression() {
+
+	// https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/expressions
+	// po wyjsciu z funkcji karetka ma byc nad tokenem zaraz ZA wyrazeniem
+	// try untill ')' at the same depth or ',' or ';'
+
+	int parenthesis_depth = 0;
+	int bracket_depth = 0;
+	string res = "";
+	while (true) {
+		debug_info();
+		switch (GETTOKEN(0)) {
+
+		case CST::TK_EOF: {
+			return res;
+		}
+		case CST::TK_ERROR: {
+			return res;
+		}
+		case CST::TK_EMPTY: {
+			return res;
+		}
+		case CST::TK_CURSOR:
+		{
+			INCPOS(1); break;
+		}
+
+		// end if
+		case CST::TK_COMMA: {
+			if (parenthesis_depth == 0 && bracket_depth == 0) return res; 
+			else { res += ","; INCPOS(1); break; }
+		}
+		case CST::TK_SEMICOLON: {
+			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
+			else { }// TODO ERROR
+		}
+		case CST::TK_PARENTHESIS_CLOSE: {
+			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
+			else { parenthesis_depth--; res += ")"; INCPOS(1); break; }
+		}
+
+		// function invokation
+		case CST::TK_PARENTHESIS_OPEN: {
+			parenthesis_depth++;
+			INCPOS(1);
+			res += parse_expression(); // inside
+		}
+
+		CASELITERAL { res += TOKENDATA(0); INCPOS(1); break; }
+		case CST::TK_IDENTIFIER: { res += TOKENDATA(0); INCPOS(1); break; }
+		case CST::TK_PERIOD: { res += "."; INCPOS(1); break; }
+		case CST::TK_BRACKET_OPEN: { bracket_depth++; INCPOS(1); res += parse_expression(); break; }
+
+		case CST::TK_BRACKET_CLOSE: {
+			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
+			else { parenthesis_depth--; res += "]"; INCPOS(1); break; }
+		}
+		default: {
+
+			CSharpLexer::Token t = GETTOKEN(0);
+			if (CSharpLexer::is_operator(t)) {
+				res += CSharpLexer::token_names[(int)GETTOKEN(0)];
+				INCPOS(1);
+			}
+
+			else {
+				// TODO ERROR !! Unknown token -> sth went wrong, stop parsing expression
+			}
+		}
+
+
+		}
+
+	}
+	
 }
 
 CSharpParser::EnumNode* CSharpParser::parse_enum() {
@@ -362,7 +445,7 @@ CSharpParser::EnumNode* CSharpParser::parse_enum() {
 
 
 	EnumNode* node = new EnumNode();
-	node->name = tokens[pos].data;
+	node->name = TOKENDATA(0);
 	INCPOS(1);
 
 	apply_attributes(node);
@@ -481,8 +564,8 @@ std::string CSharpParser::parse_type() {
 	bool array_mode = false;
 
 	while (true) {
-		cout << "token: " << pos << " name: " << CSharpLexer::token_names[(int)GETTOKEN(0)] << endl;
-		cout << "res is: " << res << endl;
+		debug_info();
+
 		switch (GETTOKEN(0)) {
 
 		case CST::TK_ERROR: {
@@ -577,17 +660,17 @@ std::string CSharpParser::parse_type() {
 			}
 		}
 
-									// complex type
+		// complex type
 		case CST::TK_IDENTIFIER: {
 
 			if (base_type) {
 				// TODO error
 			}
 
-			cout << "identifier: " << tokens[pos].data << endl;
+			cout << "identifier: " << TOKENDATA(0) << endl;
 
 			complex_type = true;
-			res += tokens[pos].data;
+			res += TOKENDATA(0);
 			INCPOS(1);
 
 			// finish if
@@ -596,6 +679,10 @@ std::string CSharpParser::parse_type() {
 				|| GETTOKEN(0) != CST::TK_BRACKET_OPEN) {	// [
 				return res;
 			}
+		}
+		default: {
+			cout << "UNKNOWN IDENTIFIER: ";
+			debug_info();
 		}
 		}
 	}
@@ -622,7 +709,7 @@ void CSharpParser::parse_using_directives(NamespaceNode* node) {
 	// read name
 	if (GETTOKEN(0) != CST::TK_IDENTIFIER) return;
 
-	string name = tokens[pos].data;
+	string name = TOKENDATA(0);
 	node->using_directives.push_back(name);
 	INCPOS(1);
 
@@ -639,7 +726,7 @@ bool CSharpParser::parse_namespace_member(NamespaceNode* node) {
 	apply_attributes(node);
 	parse_modifiers();
 
-	cout << "namespace:: actual token is: " << (int)GETTOKEN(0) << " at pos: " << pos << endl;
+	debug_info();
 
 	switch (GETTOKEN(0)) {
 
@@ -728,15 +815,20 @@ bool CSharpParser::parse_namespace_member(NamespaceNode* node) {
 
 }
 
-void CSharpParser::parse_class_member(ClassNode* node) {
+void CSharpParser::debug_info() {
+
+	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
+}
+
+
+bool CSharpParser::parse_class_member(ClassNode* node) {
 
 	cout << "parse class member" << endl;
-	cout << "actual token is: " << (int)GETTOKEN(0) << " and current pos is: " << pos << endl;
+	debug_info();
+
 
 	parse_attributes();
-	cout << " >> a" << endl;
 	parse_modifiers();
-	cout << " >> b" << endl;
 
 	switch (GETTOKEN(0)) {
 	case CST::TK_KW_CLASS: {
@@ -766,6 +858,11 @@ void CSharpParser::parse_class_member(ClassNode* node) {
 		}
 		break;
 	}
+	case CST::TK_CURLY_BRACKET_CLOSE: {
+
+		// TODO if depth ok - ok else error
+		return false;
+	}
 	default: {
 
 		// field (var), property or method
@@ -774,9 +871,9 @@ void CSharpParser::parse_class_member(ClassNode* node) {
 
 		// expected name
 		if (GETTOKEN(0) != CST::TK_IDENTIFIER)
-			return; // TODO error
+			return false; // TODO error
 
-		string name = tokens[pos].data;
+		string name = TOKENDATA(0);
 		INCPOS(1);
 
 		// FIELD
@@ -789,7 +886,7 @@ void CSharpParser::parse_class_member(ClassNode* node) {
 		}
 
 		// FIELD WITH ASSIGNMENT
-		else if (GETTOKEN(0) == CST::TK_OP_EQUAL) {
+		else if (GETTOKEN(0) == CST::TK_OP_ASSIGN) {
 			// TODO
 		}
 
@@ -802,7 +899,7 @@ void CSharpParser::parse_class_member(ClassNode* node) {
 		else if (GETTOKEN(0) == CST::TK_PARENTHESIS_OPEN) {
 
 			MethodNode* member = parse_method(name, type);
-			cout << "method parsed" << endl;
+			cout << "method parsed, pos is:" << pos <<endl;
 			if (member != nullptr) node->methods.push_back(member);
 			break;
 
@@ -817,6 +914,8 @@ void CSharpParser::parse_class_member(ClassNode* node) {
 
 
 	}
+
+	return true;
 
 }
 
@@ -887,7 +986,7 @@ CSharpParser::DeclarationNode* CSharpParser::parse_declaration() {
 	variable->type = parse_type();
 
 	if (GETTOKEN(0) == CST::TK_IDENTIFIER) {
-		variable->name = tokens[pos].data;
+		variable->name = TOKENDATA(0);
 		INCPOS(1);
 	}
 	else {
@@ -1029,6 +1128,7 @@ CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_
 	VarNode* argument = new VarNode();
 	bool end = false;
 	while (!end) {
+		debug_info();
 		switch (GETTOKEN(0)) {
 		case CST::TK_PARENTHESIS_CLOSE: {
 			if (argument->name == "") delete argument; // no argument
@@ -1039,9 +1139,13 @@ CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_
 			node->arguments.push_back(argument);
 			argument = new VarNode();
 			INCPOS(1);
+			break;
 		}
-		case CST::TK_OP_EQUAL: { // argumenty donyslne
-			// TODO skip untill , or until ) or parse expression ????
+		case CST::TK_OP_ASSIGN: { // argumenty donyslne
+			INCPOS(1);
+			string val = parse_expression();
+			argument->value = val;
+			break;
 		}
 		default: {
 
@@ -1049,8 +1153,8 @@ CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_
 			if (GETTOKEN(0) != CST::TK_IDENTIFIER) {
 				// todo error
 			}
-			string name = tokens[pos].data;
-
+			string name = TOKENDATA(0);
+			INCPOS(1);
 			argument->type = type;
 			argument->name = name;
 		}
@@ -1060,10 +1164,6 @@ CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_
 	// TODO GENERIC METHODS ( : where T is ... )
 
 	// BODY
-	if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
-		// todo error
-	}
-
 	node->body = parse_block();
 
 	return node;
@@ -1082,6 +1182,8 @@ CSharpParser::BlockNode* CSharpParser::parse_block() {
 		StatementNode* statement = parse_statement();
 		// TODO dodaj na koniec listy statementow
 	}
+
+	INCPOS(1);
 
 	return node;
 
