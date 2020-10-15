@@ -357,6 +357,8 @@ CSharpParser::ClassNode* CSharpParser::parse_class() {
 	return node;
 }
 
+
+// parse expression -> (or assignment: x &= 10 is good as well)
 string CSharpParser::parse_expression() {
 
 	// https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/expressions
@@ -394,15 +396,21 @@ string CSharpParser::parse_expression() {
 			else { }// TODO ERROR
 		}
 		case CST::TK_PARENTHESIS_CLOSE: {
+			
 			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
-			else { parenthesis_depth--; res += ")"; INCPOS(1); break; }
+			else {
+				parenthesis_depth--;
+				res += ")"; 
+				INCPOS(1); break; }
 		}
 
 		// function invokation
 		case CST::TK_PARENTHESIS_OPEN: {
 			parenthesis_depth++;
+			res += "(";
 			INCPOS(1);
 			res += parse_expression(); // inside
+			break;
 		}
 
 		CASELITERAL { res += TOKENDATA(0); INCPOS(1); break; }
@@ -473,19 +481,21 @@ CSharpParser::LoopNode* CSharpParser::parse_loop() {
 
 	// type of loop
 	switch (GETTOKEN(0)) {
-	case CST::TK_KW_DO: node->loop_type = LoopNode::Type::DO;
-	case CST::TK_KW_FOR: node->loop_type = LoopNode::Type::FOR;
-	case CST::TK_KW_FOREACH: node->loop_type = LoopNode::Type::FOREACH;
-	case CST::TK_KW_WHILE: node->loop_type = LoopNode::Type::WHILE;
+	case CST::TK_KW_DO: node->loop_type = LoopNode::Type::DO; break;
+	case CST::TK_KW_FOR: node->loop_type = LoopNode::Type::FOR; break;
+	case CST::TK_KW_FOREACH: node->loop_type = LoopNode::Type::FOREACH; break;
+	case CST::TK_KW_WHILE: node->loop_type = LoopNode::Type::WHILE; break;
 	default: { delete node; return nullptr; }
 	}
 
-	INCPOS(1);
+	INCPOS(1); // skip keyword
 
 	// ----- ----- -----
 	// PARSE BEFORE BLOCK
 
 	if (node->loop_type == LoopNode::Type::FOR) {
+
+		INCPOS(1); // skip '('
 
 		// init
 		DeclarationNode* declaration = parse_declaration();
@@ -497,11 +507,15 @@ CSharpParser::LoopNode* CSharpParser::parse_loop() {
 			delete declaration;
 		}
 
+		INCPOS(1); // skip ';'
+
 		// cond
 		skip_until_token(CST::TK_SEMICOLON);
+		INCPOS(1); // skip ';'
 
 		// iter
 		skip_until_token(CST::TK_PARENTHESIS_CLOSE);
+		INCPOS(1); // skip ')'
 
 	}
 
@@ -526,6 +540,7 @@ CSharpParser::LoopNode* CSharpParser::parse_loop() {
 
 		// cond
 		skip_until_token(CST::TK_PARENTHESIS_CLOSE);
+		INCPOS(1); // skip ')'
 
 	}
 
@@ -977,15 +992,20 @@ CSharpParser::DeclarationNode* CSharpParser::parse_declaration() {
 	// type name = x;
 	// const type name = x;
 
+	string raw = "";
 	VarNode* variable = new VarNode();
 	if (GETTOKEN(0) == CST::TK_KW_CONST) {
+		raw += "const ";
 		variable->modifiers &= (int)CSM::MOD_CONST;
 		INCPOS(1);
 	}
 
-	variable->type = parse_type();
+	string type = parse_type();
+	raw += type + " ";
+	variable->type = type;
 
 	if (GETTOKEN(0) == CST::TK_IDENTIFIER) {
+		raw += TOKENDATA(0);
 		variable->name = TOKENDATA(0);
 		INCPOS(1);
 	}
@@ -995,7 +1015,30 @@ CSharpParser::DeclarationNode* CSharpParser::parse_declaration() {
 		return nullptr;
 	}
 
-	skip_until_token(CST::TK_SEMICOLON);
+	// int x;
+	if (GETTOKEN(0) == CST::TK_SEMICOLON) {
+		raw += ";";
+		INCPOS(1);
+	}
+
+	// int x = expr;
+	else if (GETTOKEN(0) == CST::TK_OP_ASSIGN) {
+		raw += " = ";
+		INCPOS(1);
+		string expression = parse_expression();
+		if (GETTOKEN(0) != CST::TK_SEMICOLON) {
+			// TODO ERROR
+		}
+		raw += expression + ";";
+		variable->value = expression;
+		INCPOS(1);
+	}
+	else {
+		// TODO ERROR
+	}
+
+	node->raw = raw;
+	node->variable = variable;
 
 	return node;
 
@@ -1036,16 +1079,41 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 	
 	switch (GETTOKEN(0)) {
 
+	case CST::TK_CURLY_BRACKET_OPEN: {
+		BlockNode* node = parse_block();
+		return node;
+	}
+
 	CASEBASETYPE {
 		DeclarationNode* node = parse_declaration();
 		return node;
 	}
 	case CST::TK_IDENTIFIER: {
-		// todo
-		// declaration of custom type
-		// function invocation
-		// expression
-		// assignment
+		
+		// It can be:
+		//  - declaration of custom type
+		//  - expression (also function invocation)
+		//  - assignment
+
+		const int cur_pos = pos;
+		
+		// var declaration of custom type? (Foo x = new Foo();)
+		StatementNode* node = parse_declaration();
+		if (node != nullptr) return node;
+
+		// assignment or expression?
+		pos = cur_pos;
+		node = new StatementNode();
+		string expr = parse_expression();
+		if (GETTOKEN(0) != CST::TK_SEMICOLON) {
+			// todo error
+		}
+		else {
+			node->raw = expr + ";";
+			INCPOS(1); // skip ';'
+		}
+		return node;
+
 	}
 	case CST::TK_KW_FOR:
 	case CST::TK_KW_WHILE:
@@ -1075,7 +1143,20 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 		// todo
 	}
 	case CST::TK_KW_RETURN: {
-		// todo
+		StatementNode* node = new StatementNode();
+		string line = "return ";
+		INCPOS(1);
+		string expression = parse_expression();
+		line += expression;
+		if (GETTOKEN(0) != CST::TK_SEMICOLON) {
+			// todo error
+		}
+		else {
+			line += ";";
+			INCPOS(1);
+		}
+		node->raw += line;
+		return node;
 	}
 	case CST::TK_KW_YIELD: {
 		// todo
@@ -1175,15 +1256,16 @@ CSharpParser::BlockNode* CSharpParser::parse_block() {
 		// todo error
 	}
 
-	INCPOS(1);
+	INCPOS(1); // skip '{'
 
 	BlockNode* node = new BlockNode();
 	while (GETTOKEN(0) != CST::TK_CURLY_BRACKET_CLOSE) {
+		debug_info();
 		StatementNode* statement = parse_statement();
 		// TODO dodaj na koniec listy statementow
 	}
 
-	INCPOS(1);
+	INCPOS(1); // skip '}'
 
 	return node;
 
