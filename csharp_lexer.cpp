@@ -98,10 +98,7 @@ void CSharpLexer::_tokenize() {
 	while (true) {
 
 		verbatim_mode = false;
-		cout << code_pos << endl;
-		if (code_pos == 639) {
-			int x = 3;
-		}
+		
 		switch (GETCHAR(0)) {
 
 				// ----- ----- -----
@@ -142,15 +139,20 @@ void CSharpLexer::_tokenize() {
 				break;
 			}
 			case '/': {
+				// linear comment
 				if (GETCHAR(1) == '/') {
 					INCPOS(2);
 					skip_until_newline();
 					break;
 				}
+				// block comment
 				else if (GETCHAR(1) == '*') {
 					INCPOS(2);
 					skip_until("*/");
 					break;
+				}
+				else {
+					goto typicalcases; // div or div assign operator
 				}
 			}
 			case '\\': {
@@ -180,6 +182,7 @@ void CSharpLexer::_tokenize() {
 					 // TYPICAL CASES
 			default: {
 
+				typicalcases:
 				char c = GETCHAR(0); // first sign of the word
 
 				if (_is_whitespace(c)) {
@@ -223,6 +226,7 @@ void CSharpLexer::_tokenize() {
 
 				// other character - probably operator or punctuator
 				else {
+
 					Token type = Token(CST::TK_EMPTY);
 					if (read_special_char(type)) {
 						_make_token(type);
@@ -478,7 +482,7 @@ bool CSharpLexer::read_special_char(Token& type) {
 
 	case '{': type = CST::TK_CURLY_BRACKET_OPEN;						INCPOS(1); break;
 	case '}': type = CST::TK_CURLY_BRACKET_CLOSE;						INCPOS(1); break;
-	case '[': type = CST::TK_BRACKET_CLOSE;								INCPOS(1); break;
+	case '[': type = CST::TK_BRACKET_OPEN;								INCPOS(1); break;
 	case ']': type = CST::TK_BRACKET_CLOSE;								INCPOS(1); break;
 	case '(': type = CST::TK_PARENTHESIS_OPEN;							INCPOS(1); break;
 	case ')': type = CST::TK_PARENTHESIS_CLOSE;							INCPOS(1); break;

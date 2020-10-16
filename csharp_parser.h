@@ -313,7 +313,10 @@ private:
 	ConditionNode* parse_switch_statement();
 
 	DelegateNode* parse_delegate();
-	string parse_type();
+	string parse_type(bool array_constructor = false);
+	string parse_new();
+	string parse_initialization_block();
+	string parse_method_invocation();
 
 	void debug_info();
 
