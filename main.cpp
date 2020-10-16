@@ -29,6 +29,7 @@ int main() {
 		std::cout << (int)str[i] << " ";
 	}
 
+	
 
 	CSharpLexer lexer;
 	lexer.set_code(str);

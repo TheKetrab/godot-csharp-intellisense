@@ -22,6 +22,7 @@ using CSM = CSharpParser::Modifier;
 		case CST::TK_KW_UINT: \
 		case CST::TK_KW_ULONG: \
 		case CST::TK_KW_USHORT: \
+		case CST::TK_KW_VAR: \
 		case CST::TK_KW_VOID:
 
 #define CASEMODIFIER case CST::TK_KW_PUBLIC: \
@@ -474,11 +475,11 @@ string CSharpParser::parse_expression() {
 		CASELITERAL { res += TOKENDATA(0); INCPOS(1); break; }
 		case CST::TK_IDENTIFIER: { res += TOKENDATA(0); INCPOS(1); break; }
 		case CST::TK_PERIOD: { res += "."; INCPOS(1); break; }
-		case CST::TK_BRACKET_OPEN: { bracket_depth++; INCPOS(1); res += parse_expression(); break; }
+		case CST::TK_BRACKET_OPEN: { bracket_depth++; INCPOS(1); res += "[" + parse_expression(); break; }
 
 		case CST::TK_BRACKET_CLOSE: {
 			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
-			else { parenthesis_depth--; res += "]"; INCPOS(1); break; }
+			else { bracket_depth--; res += "]"; INCPOS(1); break; }
 		}
 		default: {
 
@@ -486,6 +487,11 @@ string CSharpParser::parse_expression() {
 			if (CSharpLexer::is_operator(t)) {
 				res += CSharpLexer::token_names[(int)GETTOKEN(0)];
 				INCPOS(1);
+
+				//if (CSharpLexer::is_assignment_operator(t)) {
+				//	string expr = parse_expression();
+				//}
+
 			}
 
 			else {
@@ -581,6 +587,8 @@ CSharpParser::LoopNode* CSharpParser::parse_loop() {
 	// ----- FOREACH -----
 	else if (node->loop_type == LoopNode::Type::FOREACH) {
 
+		INCPOS(1); // sip '('
+
 		// declaration
 		DeclarationNode* declaration = parse_declaration();
 		if (declaration == nullptr) {
@@ -593,7 +601,7 @@ CSharpParser::LoopNode* CSharpParser::parse_loop() {
 
 		// in
 		skip_until_token(CST::TK_PARENTHESIS_CLOSE);
-
+		INCPOS(1); // skip ')'
 	}
 
 	// ----- WHILE -----
@@ -903,7 +911,7 @@ bool CSharpParser::parse_namespace_member(NamespaceNode* node) {
 
 void CSharpParser::debug_info() {
 
-	if (pos == 152) {
+	if (pos == 195) {
 		int x = 1;
 	}
 	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
@@ -1206,7 +1214,7 @@ CSharpParser::ConditionNode* CSharpParser::parse_switch_statement() {
 
 
 CSharpParser::StatementNode* CSharpParser::parse_statement() {
-	
+
 	switch (GETTOKEN(0)) {
 
 	case CST::TK_CURLY_BRACKET_OPEN: {

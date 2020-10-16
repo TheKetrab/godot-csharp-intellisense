@@ -73,6 +73,15 @@ void CSharpLexer::clear() {
 
 }
 
+CSharpLexer::Token CSharpLexer::get_last_token() {
+
+	int n = tokens.size();
+	if (n == 0) return CST::TK_EMPTY;
+
+	return tokens[n-1].type;
+
+}
+
 void CSharpLexer::tokenize() {
 	clear();
 	_tokenize();
@@ -98,6 +107,37 @@ void CSharpLexer::_tokenize() {
 	while (true) {
 
 		verbatim_mode = false;
+		if (force_generic_close) {
+
+			if (GETCHAR(0) == '>') {
+				_make_token(CST::TK_OP_GREATER);
+				INCPOS(1);
+				continue;
+			}
+			else {
+				// generic type closed - stop
+				force_generic_close = false;
+			}
+
+		}
+
+		if (possible_generic) {
+
+			// if one of the following tokens, disable possible generic mode
+			Token last_token = get_last_token();
+			switch (last_token) {
+			case CST::TK_IDENTIFIER:        // part of name
+			case CST::TK_PERIOD:            // typename.class...
+			case CST::TK_OP_LESS:           // < deeper generic eg. List<List<T>>
+			case CST::TK_COMMA:             // separate generic args eg. Dict<int,int>
+			case CST::TK_OP_COLON_DOUBLE:   // namespace::typename
+				break; // it's fine
+			default: {
+				possible_generic = false;
+			}
+			}
+
+		}
 		
 		switch (GETCHAR(0)) {
 
@@ -555,13 +595,34 @@ bool CSharpLexer::read_special_char(Token& type) {
 		if (GETCHAR(1) == '=') { type = CST::TK_OP_LESS_EQUAL;			INCPOS(2); }
 		else if (GETCHAR(1) == '<' && GETCHAR(2) == '=') { type = CST::TK_OP_ASSIGN_LEFT_SHIFT;	INCPOS(3); }
 		else if (GETCHAR(1) == '<') { type = CST::TK_OP_LEFT_SHIFT;		INCPOS(2); }
-		else { type = CST::TK_OP_LESS;									INCPOS(1); }
+		else { 
+			if (get_last_token() == CST::TK_IDENTIFIER) {
+				possible_generic = true;
+			}
+			type = CST::TK_OP_LESS;
+			INCPOS(1);
+		}
 		break;
 	}
 	case '>': {
 		if (GETCHAR(1) == '=') { type = CST::TK_OP_GREATER_EQUAL;		INCPOS(2); }
 		else if (GETCHAR(1) == '>' && GETCHAR(2) == '=') { type = CST::TK_OP_ASSIGN_RIGHT_SHIFT;	INCPOS(3); }
-		else if (GETCHAR(1) == '>') { type = CST::TK_OP_RIGHT_SHIFT;	INCPOS(2); }
+		else if (GETCHAR(1) == '>' && GETCHAR(2) == '>') {
+			// >>> - it must be a closure of a generic type: parse separately TK(>) TK(>) ... TK(>)
+			force_generic_close = true; type = CST::TK_OP_GREATER;		INCPOS(1); break; 
+		}
+		else if (GETCHAR(1) == '>') { 
+			
+			if (possible_generic) {
+				// for sure generic ! TODO
+				type = CST::TK_OP_GREATER; INCPOS(1);
+			}
+			else {
+				type = CST::TK_OP_RIGHT_SHIFT;	INCPOS(2);
+			}
+
+		}
+
 		else { type = CST::TK_OP_GREATER;								INCPOS(1); }
 		break;
 	}
@@ -618,6 +679,27 @@ bool CSharpLexer::_is_keyword(const string& word, Token& type) const {
 
 bool CSharpLexer::is_operator(Token& type) {
 	return (int)type >= (int)CSharpLexer::OPS_BEGIN && (int)type <= (int)CSharpLexer::OPS_END;
+}
+
+bool CSharpLexer::is_assignment_operator(Token& type) {
+
+	switch (type) {
+
+	case CST::TK_OP_ASSIGN:
+	case CST::TK_OP_ASSIGN_ADD:
+	case CST::TK_OP_ASSIGN_SUB:
+	case CST::TK_OP_ASSIGN_MUL: 
+	case CST::TK_OP_ASSIGN_DIV:
+	case CST::TK_OP_ASSIGN_MOD:
+	case CST::TK_OP_ASSIGN_BIT_AND:
+	case CST::TK_OP_ASSIGN_BIT_OR:
+	case CST::TK_OP_ASSIGN_BIT_XOR:
+	case CST::TK_OP_ASSIGN_LEFT_SHIFT:
+	case CST::TK_OP_ASSIGN_RIGHT_SHIFT:
+		return true;
+	default: return false;
+
+	}
 }
 
 bool CSharpLexer::_is_text_char(char c) {

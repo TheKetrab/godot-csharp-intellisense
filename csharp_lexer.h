@@ -114,7 +114,8 @@ private:
 
 	bool comment_mode;
 	bool verbatim_mode;
-
+	bool possible_generic = false;
+	bool force_generic_close = false; // each '>' is interpreted as TK(>), don't care about GETCHAR(1) 
 
 public:
 	CSharpLexer();
@@ -136,11 +137,14 @@ public:
 	string read_char_literal();
 	string read_string_literal();
 
+	Token get_last_token();
+
 	bool read_word(string& word, Token& type); // read until identifier character
 	bool read_number(string& number, Token& type);
 	bool read_special_char(Token& type);
 	bool _is_keyword(const string& word, Token& type) const;
 	static bool is_operator(Token& type);
+	static bool is_assignment_operator(Token& type);
 };
 
 
