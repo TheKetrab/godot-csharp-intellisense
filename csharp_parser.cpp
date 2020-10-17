@@ -295,7 +295,7 @@ void CSharpParser::skip_until_token(CSharpLexer::Token tk) {
 
 
 
-vector<string>& CSharpParser::parse_generic_declaration() {
+vector<string> CSharpParser::parse_generic_declaration() {
 
 	if (GETTOKEN(0) != CST::TK_OP_LESS) {
 		// todo error
@@ -325,7 +325,7 @@ vector<string>& CSharpParser::parse_generic_declaration() {
 	return generic_declarations;
 }
 
-vector<string>& CSharpParser::parse_derived_and_implements(bool generic_context) {
+vector<string> CSharpParser::parse_derived_and_implements(bool generic_context) {
 
 	if (GETTOKEN(0) != CST::TK_COLON) {
 		// todo error
@@ -343,6 +343,7 @@ vector<string>& CSharpParser::parse_derived_and_implements(bool generic_context)
 		case CST::TK_IDENTIFIER: {
 			string type = parse_type();
 			types.push_back(type);
+			break;
 		}
 		case CST::TK_COMMA: { INCPOS(1); break; }
 		case CST::TK_CURLY_BRACKET_OPEN: { return types; }
@@ -425,22 +426,45 @@ string CSharpParser::parse_initialization_block() {
 
 	INCPOS(1); // skip '{'
 
-	string initialization_block;
+	string initialization_block = "{ ";
 	while (true) {
 
 		switch (GETTOKEN(0)) {
 
+			// TODO CASE empty error eof cursor
+
+		case CST::TK_IDENTIFIER: {
+			initialization_block += TOKENDATA(0);
+			INCPOS(1);
+			break;
 		}
-		if ()
+
+		case CST::TK_OP_ASSIGN: {
+			initialization_block += " = ";
+			INCPOS(1);
+			string val = parse_expression();
+		}
+
+		case CST::TK_COMMA: {
+			initialization_block += " , ";
+			INCPOS(1);
+			break;
+		}
+
+		case CST::TK_CURLY_BRACKET_CLOSE: {
+			initialization_block += " }";
+			INCPOS(1); // skip '}'
+			return initialization_block;
+		}
+		default: {
+			// todo error - unknown token
+		}
+
+		}
 
 
 	}
-	while (true) {
-		switch (GETTOKEN(0)) {
-
-		}
-	}
-	return "";
+	return initialization_block;
 }
 
 string CSharpParser::parse_new() {
@@ -585,6 +609,12 @@ string CSharpParser::parse_expression() {
 
 			}
 
+			else if (this->kw_value_allowed && t == CST::TK_KW_VALUE) {
+				res += "value";
+				INCPOS(1);
+				break;
+			}
+
 			else {
 				// TODO ERROR !! Unknown token -> sth went wrong, stop parsing expression
 			}
@@ -623,8 +653,35 @@ CSharpParser::EnumNode* CSharpParser::parse_enum() {
 	}
 
 	// parse members
-	while (GETTOKEN(0) != CST::TK_CURLY_BRACKET_CLOSE) {
-		parse_enum_member(node);
+	bool end = false;
+	while (!end) {
+
+		switch (GETTOKEN(0)) {
+
+			// todo typical
+
+		case CST::TK_IDENTIFIER: {
+			node->members.push_back(TOKENDATA(0));
+			INCPOS(1);
+			break;
+		}
+		case CST::TK_OP_ASSIGN: {
+			INCPOS(1); // skip '='
+			parse_expression(); // don't care about values
+			break;
+		}
+		case CST::TK_COMMA: {
+			INCPOS(1); // skip ','
+			break;
+		}
+		case CST::TK_CURLY_BRACKET_CLOSE: {
+			INCPOS(1); // skip '}'
+			end = true; break;
+		}
+		default: {
+			// TODO error
+		}
+		}
 	}
 
 	return node;
@@ -1085,7 +1142,10 @@ bool CSharpParser::parse_class_member(ClassNode* node) {
 
 		// PROPERTY
 		else if (GETTOKEN(0) == CST::TK_CURLY_BRACKET_OPEN) {
-			// TODO parse property, PropertyNode ??? getable, settable?
+			
+			PropertyNode* member = parse_property(name, type);
+			if (member != nullptr) node->properties.push_back(member);
+			break;
 		}
 
 		// METHOD
@@ -1115,9 +1175,6 @@ void CSharpParser::parse_interface_member(InterfaceNode* node) {
 	// todo
 }
 
-void CSharpParser::parse_enum_member(EnumNode* node) {
-	// todo
-}
 
 
 
@@ -1298,6 +1355,109 @@ CSharpParser::ConditionNode* CSharpParser::parse_if_statement() {
 }
 CSharpParser::ConditionNode* CSharpParser::parse_switch_statement() {
 	return nullptr;
+}
+
+CSharpParser::StatementNode* CSharpParser::parse_property_definition() {
+	debug_info();
+	switch (GETTOKEN(0)) {
+
+		// TODO case error cursor eof empty
+
+	case CST::TK_OP_LAMBDA: {
+		INCPOS(1); // skip '=>'
+		return parse_statement();
+	}
+	case CST::TK_SEMICOLON: {
+		StatementNode* node = new StatementNode();
+		node->raw = ";";
+		debug_info();
+		INCPOS(1);
+		debug_info();
+		return node; // empty statement
+	}
+	case CST::TK_CURLY_BRACKET_OPEN: {
+		return parse_block();
+	}
+	default: {
+		// TODO error
+	}
+
+	}
+
+}
+
+CSharpParser::PropertyNode* CSharpParser::parse_property(string name, string type)
+{
+	if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
+		// todo error
+	}
+
+	INCPOS(1); // skip '{'
+
+	PropertyNode* node = new PropertyNode();
+	node->name = name;
+	node->type = type;
+
+	
+	// we don't know what is declared first: get or set
+	bool get_parsed = false;
+	bool set_parsed = false;
+
+	parse_attributes();
+	parse_modifiers();
+
+	while (true) {
+		debug_info();
+		switch (GETTOKEN(0)) {
+			// TODO case eof  empy cursor
+
+		case CST::TK_KW_GET: {
+			if (get_parsed) {
+				// todo error
+			} else {
+				INCPOS(1); // skip 'get'
+				node->get_modifiers = this->modifiers;
+				node->get_statement = parse_property_definition();
+				get_parsed = true;
+				if (!set_parsed) {
+					// probably following definition of set
+					parse_attributes();
+					parse_modifiers();
+				}
+				break;
+			}
+		}
+		case CST::TK_KW_SET: {
+			if (set_parsed) {
+				// todo error
+			}
+			else {
+				INCPOS(1); // skip 'set'
+				node->set_modifiers = this->modifiers;
+				this->kw_value_allowed = true;
+				node->set_statement = parse_property_definition();
+				this->kw_value_allowed = false;
+				set_parsed = true;
+				if (!get_parsed) {
+					// probably following definition of get
+					parse_attributes();
+					parse_modifiers();
+				}
+				break;
+			}
+		}
+		case CST::TK_CURLY_BRACKET_CLOSE: {
+			debug_info();
+			INCPOS(1); // skip '}'
+			return node;
+		}
+		default: {
+			// todo error unknown
+		}
+		}
+	}
+
+	return node;
 }
 
 

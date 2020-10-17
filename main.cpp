@@ -10,7 +10,7 @@ using namespace std;
 int main() {
 
 	ifstream file;
-	file.open("script2.cs");
+	file.open("script.cs");
 
 	stringstream str_stream;
 	str_stream << file.rdbuf();

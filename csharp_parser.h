@@ -193,6 +193,13 @@ class CSharpParser {
 	};
 
 	struct PropertyNode : public VarNode {
+
+		int get_modifiers = 0;
+		int set_modifiers = 0;
+
+		StatementNode* get_statement = nullptr;
+		StatementNode* set_statement = nullptr;
+
 		void print(int indent) override;
 	};
 
@@ -302,6 +309,8 @@ private:
 	BlockNode* parse_block();
 	ConditionNode* parse_if_statement();
 	ConditionNode* parse_switch_statement();
+	PropertyNode* parse_property(string name, string type);
+	StatementNode* parse_property_definition();
 
 	DelegateNode* parse_delegate();
 	string parse_type(bool array_constructor = false);
@@ -309,8 +318,8 @@ private:
 	string parse_initialization_block();
 	string parse_method_invocation();
 	string parse_constraints();
-	vector<string>& parse_generic_declaration(); // parse <T,U,...>
-	vector<string>& parse_derived_and_implements(bool generic_context = false); // parse : C1, I1, I2, ...
+	vector<string> parse_generic_declaration(); // parse <T,U,...>
+	vector<string> parse_derived_and_implements(bool generic_context = false); // parse : C1, I1, I2, ...
 
 	static void indentation(int n);
 
@@ -347,7 +356,7 @@ private:
 
 public:
 	static map<CSharpLexer::Token, Modifier> to_modifier;
-
+	bool kw_value_allowed = false; // enable only when parse property->set
 
 	void parse_modifiers();
 	void parse_attributes();
@@ -359,7 +368,6 @@ public:
 	bool parse_class_member(ClassNode* node);
 	bool parse_namespace_member(NamespaceNode* node);
 	void parse_interface_member(InterfaceNode* node);
-	void parse_enum_member(EnumNode* node);
 
 
 	// global -> jak parser.depth == node.depth, to wezel przeczytany
