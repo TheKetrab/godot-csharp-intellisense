@@ -37,6 +37,8 @@
 //	     TryNode (try-catch-finally)
 //	     UsingNode
 
+// todo: File powinien miec vector<string> labels - zeby w razie goto intellisense podpowiadalo widoczne etykiety
+
 using namespace std;
 #include <map>
 #include <iostream>
@@ -245,8 +247,9 @@ class CSharpParser {
 
 	struct JumpNode : public StatementNode {
 		enum class Type {
-			BREAK, CONTINUE, GOTO, RETURN, YIELD, THROW
+			UNKNOWN, BREAK, CONTINUE, GOTO, RETURN, YIELD, THROW
 		};
+		JumpNode::Type jump_type = Type::UNKNOWN;
 	};
 
 	struct TryNode : public StatementNode {

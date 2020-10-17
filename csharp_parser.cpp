@@ -130,6 +130,7 @@ void CSharpParser::clear() {
 
 }
 
+// todo funckja? get_next_valid_token - czasem chcemy, zeby nastepny token byl czyms, a moze byc np kursorem, wiec trzeba skipnac cursor i wtedy nastepnym valid tokenem jest cos tam dalej
 #define GETTOKEN(ofs) ((ofs + pos) >= len ? CST::TK_ERROR : tokens[ofs + pos].type)
 #define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
 #define INCPOS(ammount) { pos += ammount; }
@@ -685,6 +686,45 @@ CSharpParser::EnumNode* CSharpParser::parse_enum() {
 	}
 
 	return node;
+}
+
+CSharpParser::JumpNode* CSharpParser::parse_jump() {
+
+	JumpNode* node = new JumpNode();
+	
+	// type of jump
+	switch (GETTOKEN(0)) {
+	case CST::TK_KW_BREAK: node->jump_type = JumpNode::Type::BREAK; break;
+	case CST::TK_KW_CONTINUE: node->jump_type = JumpNode::Type::CONTINUE; break;
+	case CST::TK_KW_GOTO: node->jump_type = JumpNode::Type::GOTO; break;
+	case CST::TK_KW_RETURN: node->jump_type = JumpNode::Type::RETURN; break;
+	case CST::TK_KW_YIELD: node->jump_type = JumpNode::Type::YIELD; break;
+	case CST::TK_KW_THROW: node->jump_type = JumpNode::Type::THROW; break;
+	default: { delete node; return nullptr; }
+	}
+
+	node->raw = CSharpLexer::token_names[(int)GETTOKEN(0)];
+	INCPOS(1); // skip keyword
+
+	bool end = false;
+	while (!end) {
+		switch (GETTOKEN(0)) {
+			// todo case typical
+		case CST::TK_SEMICOLON: {
+			node->raw += ";";
+			end = true;
+			INCPOS(1);
+			break;
+		}
+		default: {
+			node->raw += (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]);
+			INCPOS(1);
+		}
+		}
+	}
+
+	return node;
+	
 }
 
 CSharpParser::LoopNode* CSharpParser::parse_loop() {
@@ -1287,11 +1327,6 @@ CSharpParser::InterfaceNode* CSharpParser::parse_interface() {
 	return nullptr; // todo
 }
 
-
-CSharpParser::JumpNode* CSharpParser::parse_jump() {
-	return nullptr; // todo
-}
-
 CSharpParser::TryNode* CSharpParser::parse_try() {
 	return nullptr; // todo
 }
@@ -1480,6 +1515,7 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 		//  - declaration of custom type
 		//  - expression (also function invocation)
 		//  - assignment
+		//  - label
 
 		const int cur_pos = pos;
 		
@@ -1487,9 +1523,18 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 		StatementNode* node = parse_declaration();
 		if (node != nullptr) return node;
 
-		// assignment or expression?
-		pos = cur_pos;
+		pos = cur_pos; // reset
 		node = new StatementNode();
+
+		// label?
+		if (GETTOKEN(1) == CST::TK_COLON) {
+			node->raw += TOKENDATA(0) + ":";
+			// todo add TOKENDATA(0) to labels set
+			INCPOS(2);
+			return node;
+		}
+
+		// assignment or expression?
 		string expr = parse_expression();
 		if (GETTOKEN(0) != CST::TK_SEMICOLON) {
 			// todo error
@@ -1522,35 +1567,15 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 	// JUMP STATEMENT
 	case CST::TK_KW_BREAK: 
 	case CST::TK_KW_CONTINUE:
-	{
-		// todo
-	}
-	case CST::TK_KW_GOTO: {
-		// todo
-	}
-	case CST::TK_KW_RETURN: {
-		StatementNode* node = new StatementNode();
-		string line = "return ";
-		INCPOS(1);
-		string expression = parse_expression();
-		line += expression;
-		if (GETTOKEN(0) != CST::TK_SEMICOLON) {
-			// todo error
-		}
-		else {
-			line += ";";
-			INCPOS(1);
-		}
-		node->raw += line;
+	case CST::TK_KW_GOTO:
+	case CST::TK_KW_RETURN:
+	case CST::TK_KW_YIELD:
+	case CST::TK_KW_THROW: 
+	{	
+		JumpNode* node = parse_jump();
 		return node;
 	}
-	case CST::TK_KW_YIELD: {
-		// todo
-	}
-	case CST::TK_KW_THROW: {
-		// todo
-	}
-
+	
 	// TRY-CATCH-FINALLY
 	case CST::TK_KW_TRY: {
 		// todo
