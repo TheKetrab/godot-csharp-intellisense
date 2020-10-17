@@ -576,6 +576,7 @@ bool CSharpLexer::read_special_char(Token& type) {
 	}
 	case '^': {
 		if (GETCHAR(1) == '=') { type = CST::TK_OP_ASSIGN_BIT_XOR;		INCPOS(2); }
+		else if (GETCHAR(1) == '|') { type = CST::TK_CURSOR; INCPOS(2); } // TODO wywalic po testach ( cursor = ^| )
 		else { type = CST::TK_OP_XOR;									INCPOS(1); }
 		break;
 	}

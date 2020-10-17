@@ -18,21 +18,24 @@
 
 
 // Node
-//   NamespaceNode
-//	 ClassNode
-//	 InterfaceNode
-//   EnumNode
-//	 StructNode
-//	 MethodNode
-//   PropertyNode // czy jest setter, getter? settable, gettable?
-//	 StatementNode
-//     ExpressionNode (assignment, method invocation, object creation);
-//     ConditionNode (if, else, switch, case)
-//	   LoopNode (while, do while, for, foreach)
-//	   DeclarationNode
-//	   JumpNode (break, continue, switch, goto, return, yeild)
-//	   TryNode (try-catch-finally)
-//	   UsingNode
+//    NamespaceNode
+//    EnumNode
+//    GenericNode (abstract)
+//       InterfaceNode
+//       StructNode
+//          ClassNode
+//       MethodNode
+//       DelegateNode
+//    VarNode
+//       PropertyNode
+//	  StatementNode
+//       ExpressionNode (assignment, method invocation, object creation);
+//       ConditionNode (if, else, switch, case)
+//	     LoopNode (while, do while, for, foreach)
+//	     DeclarationNode
+//	     JumpNode (break, continue, switch, goto, return, yeild)
+//	     TryNode (try-catch-finally)
+//	     UsingNode
 
 using namespace std;
 #include <map>
@@ -41,19 +44,19 @@ const int TAB = 2;
 
 class CSharpParser {
 
-
-
-	static void indentation(int n);
-
-	// declarations
 	struct Node;
-	struct ClassNode;
-	struct InterfaceNode;
+	struct NamespaceNode;
 	struct EnumNode;
+	struct GenericNode;
+	struct InterfaceNode;
 	struct StructNode;
+	struct ClassNode;
 	struct MethodNode;
+	struct DelegateNode;
+	struct VarNode;
 	struct PropertyNode;
 	struct StatementNode;
+	struct ExpressionNode;
 	struct ConditionNode;
 	struct LoopNode;
 	struct DeclarationNode;
@@ -61,20 +64,16 @@ class CSharpParser {
 	struct TryNode;
 	struct UsingNode;
 
-	struct VarNode; // name and type
-
-
-	// definitions
+	// abstract
 	struct Node {
 
 		int line = 0;
 		int column = 0;
-
 		int modifiers = 0;
 		vector<string> attributes;
+		string name;
 
 		Node* parent = nullptr;
-		string name = "";
 
 		Node() {}
 		Node(const CSharpLexer::TokenData td) {
@@ -96,6 +95,91 @@ class CSharpParser {
 
 	};
 
+	// w namespace'ie sa inne namespace'y i klasy
+	// using directives refers ONLY to current namespace or global(aka filenode)
+	// N1 { using System; } ... N1 { SYSTEM NOT VISIBLE !!! }
+	struct NamespaceNode : public Node {
+		vector<NamespaceNode*> namespaces;
+		vector<ClassNode*> classes;
+		vector<StructNode*> structures;
+		vector<InterfaceNode*> interfaces;
+		vector<EnumNode*> enums;
+
+		vector<string> using_directives;
+		vector<string> using_static_directives;
+
+		NamespaceNode();
+
+		void print(int indent) override;
+	};
+
+	struct EnumNode : public Node {
+
+		string type = "int"; // domyslnie int
+		vector<string> members;
+		EnumNode() {}
+		// todo
+
+		void print(int indent) override;
+	};
+
+	// abstract
+	struct GenericNode : public Node {
+
+		bool is_generic = false;
+		vector<string> generic_declarations;
+		string constraints;
+
+	};
+
+	struct InterfaceNode : public GenericNode {
+
+		vector<string> implemented_interfaces;
+
+		// members:
+		vector<MethodNode*> methods;
+		vector<PropertyNode*> properties;
+
+		void print(int indent) override;
+
+	};
+
+	struct StructNode : public GenericNode {
+
+		vector<string> base_types; // base class and interfaces
+
+		// members:
+		vector<VarNode*> variables;
+		vector<MethodNode*> methods;
+		vector<ClassNode*> classes;
+		vector<InterfaceNode*> interfaces;
+		vector<StructNode*> structures;
+		vector<EnumNode*> enums;
+		vector<PropertyNode*> properties;
+
+		void print(int indent) override;
+
+	};
+
+	struct ClassNode : public StructNode {
+
+		void print(int indent) override;
+
+		ClassNode() {}
+	};
+
+	struct MethodNode : public GenericNode {
+		string return_type = "";
+		vector<VarNode*> arguments;
+		StatementNode* body = nullptr;
+
+		void print(int indent) override;
+	};
+
+	struct DelegateNode : public GenericNode {
+		// todo
+	};
+
 	struct VarNode : public Node {
 		string type;
 		string value;
@@ -108,46 +192,9 @@ class CSharpParser {
 		}
 	};
 
-
-	struct ClassNode : public Node {
-
-
-		ClassNode* base_class = nullptr;
-		vector<InterfaceNode*> impl_interfaces;
-
-		// members:
-		vector<VarNode*> variables;
-		vector<MethodNode*> methods;
-		vector<ClassNode*> classes;
-		vector<InterfaceNode*> interfaces;
-		vector<StructNode*> structures;
-		vector<EnumNode*> enums;
-		vector<PropertyNode*> properties;
-
+	struct PropertyNode : public VarNode {
 		void print(int indent) override;
-
-		ClassNode() {}
 	};
-
-	struct StructNode : public Node {
-
-		StructNode* base_struct = nullptr;
-		vector<InterfaceNode*> impl_interfaces;
-
-		// members:
-		vector<VarNode*> variables;
-		vector<MethodNode*> methods;
-
-		vector<ClassNode*> classes;
-		vector<InterfaceNode*> interfaces;
-		vector<StructNode*> structures;
-		vector<EnumNode*> enums;
-		vector<PropertyNode*> properties;
-
-		void print(int indent) override;
-
-	};
-
 
 	// ----- ----- ----- ----- -----
 	//		STATEMENT NODE
@@ -205,66 +252,10 @@ class CSharpParser {
 	// ----- ----- ----- ----- -----
 
 
-	struct MethodNode : public Node {
-		string return_type = "";
-		vector<VarNode*> arguments;
-
-		StatementNode* body = nullptr;
-
-		void print(int indent) override;
-	};
-
-	struct PropertyNode : public Node {
-		// todo info about get set
-
-		void print(int indent) override;
-	};
-
-	// w namespace'ie sa inne namespace'y i klasy
-	// using directives refers ONLY to current namespace or global(aka filenode)
-	// N1 { using System; } ... N1 { SYSTEM NOT VISIBLE !!! }
-	struct NamespaceNode : public Node {
-		vector<NamespaceNode*> namespaces;
-		vector<ClassNode*> classes;
-		vector<StructNode*> structures;
-		vector<InterfaceNode*> interfaces;
-		vector<EnumNode*> enums;
-
-		vector<string> using_directives;
-		vector<string> using_static_directives;
-
-		NamespaceNode();
-
-		void print(int indent) override;
-	};
-
-	struct InterfaceNode : public Node {
-
-		string name = "";
-		vector<InterfaceNode> implemented_interfaces;
-
-		// members:
-		vector<MethodNode*> methods;
-		vector<PropertyNode*> properties;
 
 
-		void print(int indent) override;
 
-	};
 
-	struct EnumNode : public Node {
-
-		string type = "int"; // domyslnie int
-		vector<string> members;
-		EnumNode() {}
-		// todo
-
-		void print(int indent) override;
-	};
-
-	struct DelegateNode : public Node {
-		// todo
-	};
 
 
 	// ----- ----- -----
@@ -317,6 +308,12 @@ private:
 	string parse_new();
 	string parse_initialization_block();
 	string parse_method_invocation();
+	string parse_constraints();
+	vector<string>& parse_generic_declaration(); // parse <T,U,...>
+	vector<string>& parse_derived_and_implements(bool generic_context = false); // parse : C1, I1, I2, ...
+
+	static void indentation(int n);
+
 
 	void debug_info();
 
@@ -364,8 +361,6 @@ public:
 	void parse_interface_member(InterfaceNode* node);
 	void parse_enum_member(EnumNode* node);
 
-
-	void parse_possible_type_parameter_node(Node* node);
 
 	// global -> jak parser.depth == node.depth, to wezel przeczytany
 	struct Depth {

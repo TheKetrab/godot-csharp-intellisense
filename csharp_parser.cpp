@@ -294,38 +294,84 @@ void CSharpParser::skip_until_token(CSharpLexer::Token tk) {
 }
 
 
-void CSharpParser::parse_possible_type_parameter_node(Node* node) {
 
-	skip_until_token(CST::TK_CURLY_BRACKET_OPEN);
-	INCPOS(1);
-	return;
-	// TODO in the future
+vector<string>& CSharpParser::parse_generic_declaration() {
+
+	if (GETTOKEN(0) != CST::TK_OP_LESS) {
+		// todo error
+	}
+
+	INCPOS(1); // skip '<'
+
+	vector<string> generic_declarations;
 
 	while (true) {
-
 		switch (GETTOKEN(0)) {
-		case CST::TK_ERROR: {
-			// todo
+
+			// TODO case error empty eof, cursor
+
+		case CST::TK_IDENTIFIER: { 
+			generic_declarations.push_back(TOKENDATA(0));
+			INCPOS(1); break; 
 		}
-		case CST::TK_EOF: {
-			// todo
-		}
-		case CST::TK_BRACKET_CLOSE: {
-			// todo -> end parsing
-		}
-		case CST::TK_KW_WHERE: {
-			// todo skip untill '{'
-		}
-		case CST::TK_OP_LESS: {
-		}
-		case CST::TK_IDENTIFIER: {
-		}
-		case CST::TK_CURLY_BRACKET_OPEN: {
-			// todo finish
+		case CST::TK_COMMA: { INCPOS(1); break; }
+		case CST::TK_OP_GREATER: { INCPOS(1); return generic_declarations; }
+		default: {
+			// todo error unexpected token
 		}
 		}
 	}
 
+	return generic_declarations;
+}
+
+vector<string>& CSharpParser::parse_derived_and_implements(bool generic_context) {
+
+	if (GETTOKEN(0) != CST::TK_COLON) {
+		// todo error
+	}
+
+	INCPOS(1); // skip ':'
+	
+	vector<string> types;
+
+	while (true) {
+		switch (GETTOKEN(0)) {
+
+			// TODO case error empty eof, cursor
+
+		case CST::TK_IDENTIFIER: {
+			string type = parse_type();
+			types.push_back(type);
+		}
+		case CST::TK_COMMA: { INCPOS(1); break; }
+		case CST::TK_CURLY_BRACKET_OPEN: { return types; }
+		default: {
+			if (generic_context && GETTOKEN(0) == CST::TK_KW_WHERE) {
+				return types;
+			}
+			// todo error unexpected token
+		}
+		}
+	}
+
+	return types;
+
+}
+
+
+// generic -> where T : C1, new()
+string CSharpParser::parse_constraints() {
+
+	if (GETTOKEN(0) != CST::TK_KW_WHERE) {
+		// todo error
+	}
+
+	string constraints;
+	// TODO in the future
+	skip_until_token(CST::TK_CURLY_BRACKET_OPEN);
+
+	return "";
 }
 
 CSharpParser::ClassNode* CSharpParser::parse_class() {
@@ -344,17 +390,56 @@ CSharpParser::ClassNode* CSharpParser::parse_class() {
 	apply_attributes(node);
 	apply_modifiers(node);
 
-	// parse generic params, base class and interfaces <-- todo zrobic z tego funkcje
-	parse_possible_type_parameter_node(node); // wstrzykuje do klasy info z tego co jest za nazwa klasy
+	// generic
+	if (GETTOKEN(0) == CST::TK_OP_LESS) {
+		node->is_generic = true;
+		node->generic_declarations = parse_generic_declaration();
+	}
+
+	// derived and implements
+	if (GETTOKEN(0) == CST::TK_COLON) {
+		node->base_types = parse_derived_and_implements(node->is_generic);
+	}
+
+	// constraints
+	if (GETTOKEN(0) == CST::TK_KW_WHERE) {
+		node->constraints = parse_constraints();
+	}
+	
+	if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
+		// TODO ERROR
+	}
+
+	INCPOS(1);
 
 	while (parse_class_member(node));
-
 
 	return node;
 }
 
 string CSharpParser::parse_initialization_block() {
-	// TODO
+	
+	if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
+		// todo error
+	}
+
+	INCPOS(1); // skip '{'
+
+	string initialization_block;
+	while (true) {
+
+		switch (GETTOKEN(0)) {
+
+		}
+		if ()
+
+
+	}
+	while (true) {
+		switch (GETTOKEN(0)) {
+
+		}
+	}
 	return "";
 }
 
@@ -480,6 +565,12 @@ string CSharpParser::parse_expression() {
 		case CST::TK_BRACKET_CLOSE: {
 			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
 			else { bracket_depth--; res += "]"; INCPOS(1); break; }
+		}
+		case CST::TK_CURLY_BRACKET_CLOSE: { // for initialization block: var x = new { a = EXPR };
+			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
+			else {
+				// todo error
+			}
 		}
 		default: {
 
@@ -911,9 +1002,6 @@ bool CSharpParser::parse_namespace_member(NamespaceNode* node) {
 
 void CSharpParser::debug_info() {
 
-	if (pos == 195) {
-		int x = 1;
-	}
 	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
 }
 
@@ -1449,12 +1537,14 @@ void CSharpParser::ClassNode::print(int indent) {
 	cout << "CLASS " << name << ":" << endl;
 
 	// HEADERS:
-	if (base_class != nullptr) {
+	if (base_types.size() > 0) {
 		indentation(indent + TAB);
-		cout << "base class: " << base_class->name << endl;
+		cout << "base types:";
+		for (string& x : base_types)
+			cout << " " << x;
+		cout << endl;
 	}
 
-	if (impl_interfaces.size() > 0)		print_header(indent + TAB, impl_interfaces, "impl-interfaces:");
 	if (interfaces.size() > 0)			print_header(indent + TAB, interfaces, "interfaces:");
 	if (classes.size() > 0)				print_header(indent + TAB, classes, "classes:");
 	if (structures.size() > 0)			print_header(indent + TAB, structures, "structures:");
@@ -1475,12 +1565,15 @@ void CSharpParser::StructNode::print(int indent) {
 	cout << "STRUCT " << name << ":" << endl;
 
 	// HEADERS:
-	if (base_struct != nullptr) {
+	if (base_types.size() > 0) {
 		indentation(indent + TAB);
-		cout << "base struct: " << base_struct->name << endl;
+		cout << "base types:";
+		for (string& x : base_types)
+			cout << " " << x;
+		cout << endl;
 	}
 
-	if (impl_interfaces.size() > 0)		print_header(indent + TAB, impl_interfaces, "impl-interfaces:");
+		
 	if (interfaces.size() > 0)			print_header(indent + TAB, interfaces, "interfaces:");
 	if (classes.size() > 0)				print_header(indent + TAB, classes, "classes:");
 	if (structures.size() > 0)			print_header(indent + TAB, structures, "structures:");
