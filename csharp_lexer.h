@@ -112,8 +112,9 @@ private:
 	int line;
 	int column;
 
-	bool comment_mode;
-	bool verbatim_mode;
+	bool comment_mode = false;
+	bool verbatim_mode = false;
+	bool interpolated_mode = false;
 	bool possible_generic = false;
 	bool force_generic_close = false; // each '>' is interpreted as TK(>), don't care about GETCHAR(1) 
 
@@ -136,6 +137,8 @@ public:
 	string skip_until_whitespace();
 	string read_char_literal();
 	string read_string_literal();
+	string read_string_in_brackets();
+
 
 	Token get_last_token();
 

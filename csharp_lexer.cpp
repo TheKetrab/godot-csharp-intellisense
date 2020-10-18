@@ -139,6 +139,7 @@ void CSharpLexer::_tokenize() {
 
 		}
 		
+		cout << "code pos is: " << code_pos << " -> " << (char)GETCHAR(0) << endl;
 		switch (GETCHAR(0)) {
 
 				// ----- ----- -----
@@ -154,7 +155,7 @@ void CSharpLexer::_tokenize() {
 				break;
 			}
 			case '#': {
-				INCPOS(1);
+				skip_until_newline();
 				// TODO readuntil newline and add token DIRECTIVE, what if multiline directive?
 				break;
 			}
@@ -168,7 +169,12 @@ void CSharpLexer::_tokenize() {
 			case '\"': {
 				INCPOS(1); // skip " char
 				string string_literal = read_string_literal();
-				_make_token(CST::TK_LT_STRING, string_literal);
+				if (interpolated_mode) {
+					_make_token(CST::TK_LT_INTERPOLATED, string_literal);
+					interpolated_mode = false;
+				} else {
+					_make_token(CST::TK_LT_STRING, string_literal);
+				}
 				INCPOS(1); // skip " char
 				break;
 			}
@@ -200,7 +206,9 @@ void CSharpLexer::_tokenize() {
 				break;
 			}
 			case '$': {
-				// TODO
+				INCPOS(1); // skip '$'
+				if (GETCHAR(0) != '"') _make_token(CST::TK_EMPTY);
+				else interpolated_mode = true;
 				break;
 			}
 			case '\r': {
@@ -335,12 +343,39 @@ string CSharpLexer::read_char_literal() {
 	return res;
 }
 
-string CSharpLexer::read_string_literal() {
 
-	// TODO $ mode
+string CSharpLexer::read_string_in_brackets() {
+
+	int depth = 0;
+	char c; string res;
+
+	while ((c = GETCHAR(0)) > 0) {
+
+		res += c;
+		INCPOS(1);
+
+		if (c == '{') depth++;
+		if (c == '}') depth--; 
+
+		if (depth == 0) return res;
+	}
+
+	return res;
+}
+
+string CSharpLexer::read_string_literal() {
 
 	char c; string res = "";
 	while ((c = GETCHAR(0)) > 0) {
+
+		if (interpolated_mode) {
+			if (c == '{') {
+				res += read_string_in_brackets();
+				continue;
+			}
+		}
+
+
 
 		if (verbatim_mode) {
 			if (c == '"' && GETCHAR(1) == '"') { res += "\"\""; INCPOS(2); }
@@ -750,6 +785,7 @@ void CSharpLexer::print_tokens() {
 			case CST::TK_LT_REAL:
 			case CST::TK_LT_CHAR:
 			case CST::TK_LT_STRING:
+			case CST::TK_LT_INTERPOLATED:
 			case CST::TK_IDENTIFIER: {
 				cout << "(" << td.data << ")";
 				break;
