@@ -136,7 +136,7 @@ class CSharpParser {
 
 	struct InterfaceNode : public GenericNode {
 
-		vector<string> implemented_interfaces;
+		vector<string> base_types; // base interfaces
 
 		// members:
 		vector<MethodNode*> methods;
@@ -254,6 +254,7 @@ class CSharpParser {
 
 	struct TryNode : public StatementNode {
 
+		vector<StatementNode*> blocks; // try, catch blocks and finally
 	};
 
 	struct UsingNode : public StatementNode {
@@ -311,9 +312,10 @@ private:
 	UsingNode* parse_using_statement();
 	StatementNode* parse_statement();
 	string parse_expression();
-	MethodNode* parse_method(string name, string return_type);
+	MethodNode* parse_method_declaration(string name, string return_type, bool interface_context = false);
 	BlockNode* parse_block();
 	ConditionNode* parse_if_statement();
+	TryNode* parse_try_statement();
 	ConditionNode* parse_switch_statement();
 	PropertyNode* parse_property(string name, string type);
 	StatementNode* parse_property_definition();
@@ -374,7 +376,7 @@ public:
 	void parse_using_directive(NamespaceNode* node);
 	bool parse_class_member(ClassNode* node);
 	bool parse_namespace_member(NamespaceNode* node);
-	void parse_interface_member(InterfaceNode* node);
+	bool parse_interface_member(InterfaceNode* node);
 
 
 	// global -> jak parser.depth == node.depth, to wezel przeczytany

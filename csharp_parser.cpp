@@ -1212,7 +1212,7 @@ bool CSharpParser::parse_class_member(ClassNode* node) {
 		// METHOD
 		else if (GETTOKEN(0) == CST::TK_PARENTHESIS_OPEN) {
 
-			MethodNode* member = parse_method(name, type);
+			MethodNode* member = parse_method_declaration(name, type);
 			if (member != nullptr) node->methods.push_back(member);
 			break;
 
@@ -1232,8 +1232,62 @@ bool CSharpParser::parse_class_member(ClassNode* node) {
 
 }
 
-void CSharpParser::parse_interface_member(InterfaceNode* node) {
-	// todo
+bool CSharpParser::parse_interface_member(InterfaceNode* node) {
+
+	parse_attributes();
+	// note: there are no modifiers in interfaces
+
+	switch (GETTOKEN(0)) {
+	// todo case typical
+	case CST::TK_CURLY_BRACKET_CLOSE: {
+
+		// TODO if depth ok - ok else error
+		INCPOS(1);
+		return false;
+	}
+	default: {
+
+		// field (var), property or method
+		string type = parse_type();
+
+		// expected name
+		if (GETTOKEN(0) != CST::TK_IDENTIFIER)
+			return false; // TODO error
+
+		string name = TOKENDATA(0);
+		INCPOS(1);
+
+		// PROPERTY
+		if (GETTOKEN(0) == CST::TK_CURLY_BRACKET_OPEN) {
+
+			PropertyNode* member = parse_property(name, type);
+			if (member != nullptr) node->properties.push_back(member);
+			break;
+		}
+
+		// METHOD
+		else if (GETTOKEN(0) == CST::TK_PARENTHESIS_OPEN) {
+
+			MethodNode* member = parse_method_declaration(name, type, true);
+			if (member != nullptr) node->methods.push_back(member);
+			break;
+
+		}
+
+		else {
+			// TODO ERROR
+		}
+
+
+	}
+
+
+	}
+
+	return true;
+
+
+
 }
 
 
@@ -1320,7 +1374,47 @@ CSharpParser::StructNode* CSharpParser::parse_struct() {
 }
 
 CSharpParser::InterfaceNode* CSharpParser::parse_interface() {
-	return nullptr; // todo
+
+	// is interface?
+	if (GETTOKEN(0) != CST::TK_KW_INTERFACE) return nullptr;
+	INCPOS(1);
+
+	// read name
+	if (GETTOKEN(0) != CST::TK_IDENTIFIER) return nullptr;
+
+	InterfaceNode* node = new InterfaceNode();
+	node->name = TOKENDATA(0);
+	INCPOS(1);
+
+	apply_attributes(node);
+	apply_modifiers(node);
+
+	// generic
+	if (GETTOKEN(0) == CST::TK_OP_LESS) {
+		node->is_generic = true;
+		node->generic_declarations = parse_generic_declaration();
+	}
+
+	// derived and implements
+	if (GETTOKEN(0) == CST::TK_COLON) {
+		node->base_types = parse_derived_and_implements(node->is_generic);
+	}
+
+	// constraints
+	if (GETTOKEN(0) == CST::TK_KW_WHERE) {
+		node->constraints = parse_constraints();
+	}
+
+	if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
+		// TODO ERROR
+	}
+
+	INCPOS(1);
+
+	while (parse_interface_member(node));
+
+	return node;
+
 }
 
 CSharpParser::TryNode* CSharpParser::parse_try() {
@@ -1421,6 +1515,76 @@ CSharpParser::ConditionNode* CSharpParser::parse_if_statement() {
 
 	return node;
 
+}
+CSharpParser::TryNode* CSharpParser::parse_try_statement()
+{
+	// try { ... } (catch { ... } (when ...)? )* (finally { ... })?
+	TryNode* node = new TryNode();
+
+	if (GETTOKEN(0) != CST::TK_KW_TRY) {
+		// todo error
+	}
+
+	INCPOS(1); // skip try
+
+	if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
+		// todo error
+	}
+
+	BlockNode* try_block = parse_block();
+
+	while (GETTOKEN(0) == CST::TK_KW_CATCH) {
+
+		INCPOS(1); // skip 'catch'
+		if (GETTOKEN(0) != CST::TK_PARENTHESIS_OPEN) {
+			// todo error
+		}
+
+		INCPOS(1); // skip '('
+		parse_expression(); // ignore
+
+		if (GETTOKEN(0) != CST::TK_PARENTHESIS_CLOSE) {
+			// todo error
+		}
+
+		INCPOS(1); // skip ')'
+
+		// possible when
+		if (GETTOKEN(0) == CST::TK_KW_WHEN) {
+			INCPOS(1); // skip 'when'
+			if (GETTOKEN(0) != CST::TK_PARENTHESIS_OPEN) {
+				// todo error
+			}
+
+			INCPOS(1); // skip '('
+			parse_expression(); // ignore
+
+			if (GETTOKEN(0) != CST::TK_PARENTHESIS_CLOSE) {
+				// todo error
+			}
+		}
+
+		// block
+		if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
+			// todo error
+		}
+
+		BlockNode* block = parse_block();
+		node->blocks.push_back(block);
+
+	}
+
+	// possible finally
+	if (GETTOKEN(0) == CST::TK_KW_FINALLY) {
+		INCPOS(1); // skip 'finally'
+		if (GETTOKEN(0) != CST::TK_CURLY_BRACKET_OPEN) {
+			// todo error
+		}
+		BlockNode* finally_block = parse_block();
+		node->blocks.push_back(finally_block);
+	}
+
+	return node;
 }
 CSharpParser::ConditionNode* CSharpParser::parse_switch_statement() {
 	return nullptr;
@@ -1621,7 +1785,8 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 	
 	// TRY-CATCH-FINALLY
 	case CST::TK_KW_TRY: {
-		// todo
+		TryNode* node = parse_try_statement();
+		return node;
 	}
 
 	 // USING STATEMENT
@@ -1655,7 +1820,7 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 	return nullptr;
 }
 
-CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_type) {
+CSharpParser::MethodNode* CSharpParser::parse_method_declaration(string name, string return_type, bool interface_context) {
 
 	cout << "parse method (" << name << "," << return_type << ")" << endl;
 
@@ -1703,6 +1868,10 @@ CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_
 			INCPOS(1); // ignore
 			break;
 		}
+		case CST::TK_KW_PARAMS: {
+			INCPOS(1); // ignore
+			break;
+		}
 		default: {
 
 			string type = parse_type();
@@ -1720,7 +1889,15 @@ CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_
 	// TODO GENERIC METHODS ( : where T is ... )
 
 	// BODY
-	node->body = parse_block();
+	if (interface_context) {
+		if (GETTOKEN(0) != CST::TK_SEMICOLON) {
+			// todo error
+		}
+		INCPOS(1); // skip ';'
+	}
+	else { // class context
+		node->body = parse_block();
+	}
 
 	return node;
 }

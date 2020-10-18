@@ -10,7 +10,7 @@ using namespace std;
 int main() {
 
 	ifstream file;
-	file.open("script3.cs");
+	file.open("script4.cs");
 
 	stringstream str_stream;
 	str_stream << file.rdbuf();
@@ -22,12 +22,12 @@ int main() {
 	cout << str << endl;
 
 	// ASCII PRINT
-	cout << "----- ----- -----" << endl;
-	cout << "  ASCII print: " << endl;
-	cout << "----- ----- -----" << endl;
-	for (int i = 0; i < str.size(); i++) {
-		std::cout << (int)str[i] << " ";
-	}
+	//cout << "----- ----- -----" << endl;
+	//cout << "  ASCII print: " << endl;
+	//cout << "----- ----- -----" << endl;
+	//for (int i = 0; i < str.size(); i++) {
+	//	std::cout << (int)str[i] << " ";
+	//}
 
 	
 
