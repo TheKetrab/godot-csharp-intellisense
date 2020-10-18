@@ -69,7 +69,8 @@ std::map<CST, CSM> CSharpParser::to_modifier = {
 	{ CST::TK_KW_STATIC,		CSM::MOD_STATIC },
 	{ CST::TK_KW_UNSAFE,		CSM::MOD_UNSAFE },
 	{ CST::TK_KW_VIRTUAL,		CSM::MOD_VIRTUAL },
-	{ CST::TK_KW_VOLATILE,		CSM::MOD_VOLATILE }
+	{ CST::TK_KW_VOLATILE,		CSM::MOD_VOLATILE },
+	{ CST::TK_KW_ASYNC,			CSM::MOD_ASYNC }
 };
 
 CSharpParser::CSharpParser(vector<CSharpLexer::TokenData>& tokens) {
@@ -751,13 +752,12 @@ CSharpParser::LoopNode* CSharpParser::parse_loop() {
 		INCPOS(1); // skip '('
 
 		// init
-		DeclarationNode* declaration = parse_declaration();
-		if (declaration == nullptr) {
+		VarNode* variable = parse_declaration();
+		if (variable == nullptr) {
 			skip_until_token(CST::TK_SEMICOLON); // assignment or sth else
 		}
 		else {
-			node->local_variable = declaration->variable;
-			delete declaration;
+			node->local_variable = variable;
 		}
 
 		INCPOS(1); // skip ';'
@@ -778,13 +778,12 @@ CSharpParser::LoopNode* CSharpParser::parse_loop() {
 		INCPOS(1); // sip '('
 
 		// declaration
-		DeclarationNode* declaration = parse_declaration();
-		if (declaration == nullptr) {
+		VarNode* variable = parse_declaration();
+		if (variable == nullptr) {
 			skip_until_token(CST::TK_KW_IN);
 		}
 		else {
-			node->local_variable = declaration->variable;
-			delete declaration;
+			node->local_variable = variable;
 		}
 
 		// in
@@ -1257,65 +1256,40 @@ void CSharpParser::NamespaceNode::print(int indent) {
 
 }
 
-
-CSharpParser::DeclarationNode* CSharpParser::parse_declaration() {
-
-	DeclarationNode* node = new DeclarationNode();
+CSharpParser::VarNode* CSharpParser::parse_declaration() {
 
 	// type name;
 	// type name = x;
 	// const type name = x;
 
-	string raw = "";
 	VarNode* variable = new VarNode();
 	if (GETTOKEN(0) == CST::TK_KW_CONST) {
-		raw += "const ";
 		variable->modifiers &= (int)CSM::MOD_CONST;
 		INCPOS(1);
 	}
 
 	string type = parse_type();
-	raw += type + " ";
 	variable->type = type;
 
 	if (GETTOKEN(0) == CST::TK_IDENTIFIER) {
-		raw += TOKENDATA(0);
 		variable->name = TOKENDATA(0);
 		INCPOS(1);
 	}
 	else {
 		delete variable;
-		delete node;
 		return nullptr;
 	}
 
 	// int x;
-	if (GETTOKEN(0) == CST::TK_SEMICOLON) {
-		raw += ";";
-		INCPOS(1);
-	}
+	if (GETTOKEN(0) != CST::TK_OP_ASSIGN)
+		return variable;
 
 	// int x = expr;
-	else if (GETTOKEN(0) == CST::TK_OP_ASSIGN) {
-		raw += " = ";
-		INCPOS(1);
-		string expression = parse_expression();
-		if (GETTOKEN(0) != CST::TK_SEMICOLON) {
-			// TODO ERROR
-		}
-		raw += expression + ";";
-		variable->value = expression;
-		INCPOS(1);
-	}
-	else {
-		// TODO ERROR
-	}
+	INCPOS(1); // skip '='
+	string expression = parse_expression();
+	variable->value = expression;
 
-	node->raw = raw;
-	node->variable = variable;
-
-	return node;
-
+	return variable;
 }
 
 CSharpParser::StructNode* CSharpParser::parse_struct() {
@@ -1331,8 +1305,46 @@ CSharpParser::TryNode* CSharpParser::parse_try() {
 	return nullptr; // todo
 }
 
-CSharpParser::UsingNode* CSharpParser::parse_using() {
-	return nullptr; // todo
+CSharpParser::UsingNode* CSharpParser::parse_using_statement() {
+	
+	// using ( declaration or expression ) statement
+	UsingNode* node = new UsingNode();
+
+	if (GETTOKEN(0) != CST::TK_KW_USING) {
+		// todo error
+	}
+
+	INCPOS(1);
+	node->raw = "using ";
+
+	if (GETTOKEN(0) != CST::TK_PARENTHESIS_OPEN) {
+		// todo error
+	}
+
+	INCPOS(1);
+	node->raw += "(";
+
+	// parse declaration or expression
+	int cur_pos = pos;
+	VarNode* variable = parse_declaration();
+	if (variable != nullptr) { 
+		// it was declaration
+		node->local_variable = variable;
+	}
+	else { 
+		// it is expression
+		pos = cur_pos; // reset and retry
+		string expr = parse_expression();
+		node->raw += expr;
+	}
+
+	node->raw += ")";
+	INCPOS(1); // skip ')'
+
+	StatementNode* statement = parse_statement();
+	node->body = statement;
+			
+	return node;
 }
 
 
@@ -1506,7 +1518,11 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 	}
 
 	CASEBASETYPE {
-		DeclarationNode* node = parse_declaration();
+		VarNode *variable = parse_declaration();
+		DeclarationNode* node = new DeclarationNode();
+		node->variable = variable;
+		INCPOS(1); // skip ';'
+
 		return node;
 	}
 	case CST::TK_IDENTIFIER: {
@@ -1520,11 +1536,16 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 		const int cur_pos = pos;
 		
 		// var declaration of custom type? (Foo x = new Foo();)
-		StatementNode* node = parse_declaration();
-		if (node != nullptr) return node;
+		VarNode* variable = parse_declaration();
+		if (variable != nullptr) {
+			DeclarationNode* node = new DeclarationNode();
+			node->variable = variable;
+			INCPOS(1); // skip ';'
+			return node;
+		}
 
 		pos = cur_pos; // reset
-		node = new StatementNode();
+		StatementNode* node = new StatementNode();
 
 		// label?
 		if (GETTOKEN(1) == CST::TK_COLON) {
@@ -1579,6 +1600,12 @@ CSharpParser::StatementNode* CSharpParser::parse_statement() {
 	// TRY-CATCH-FINALLY
 	case CST::TK_KW_TRY: {
 		// todo
+	}
+
+	 // USING STATEMENT
+	case CST::TK_KW_USING: {
+		UsingNode* node = parse_using_statement();
+		return node;
 	}
 
 	// OTHER

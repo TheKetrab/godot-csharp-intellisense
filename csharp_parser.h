@@ -258,6 +258,9 @@ class CSharpParser {
 
 	struct UsingNode : public StatementNode {
 
+		VarNode* local_variable = nullptr;
+		StatementNode* body = nullptr;
+
 	};
 	// ----- ----- ----- ----- -----
 
@@ -302,10 +305,10 @@ private:
 	InterfaceNode* parse_interface();
 	EnumNode* parse_enum();
 	LoopNode* parse_loop();
-	DeclarationNode* parse_declaration();
+	VarNode* parse_declaration();
 	JumpNode* parse_jump();
 	TryNode* parse_try();
-	UsingNode* parse_using();
+	UsingNode* parse_using_statement();
 	StatementNode* parse_statement();
 	string parse_expression();
 	MethodNode* parse_method(string name, string return_type);
@@ -354,7 +357,8 @@ private:
 		MOD_STATIC = 1 << 11,
 		MOD_UNSAFE = 1 << 12,
 		MOD_VIRTUAL = 1 << 13,
-		MOD_VOLATILE = 1 << 14
+		MOD_VOLATILE = 1 << 14,
+		MOD_ASYNC = 1 << 15
 	};
 
 public:
