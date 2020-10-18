@@ -139,7 +139,7 @@ void CSharpLexer::_tokenize() {
 
 		}
 		
-		cout << "code pos is: " << code_pos << " -> " << (char)GETCHAR(0) << endl;
+		// cout << "code pos is: " << code_pos << " -> " << (char)GETCHAR(0) << endl;
 		switch (GETCHAR(0)) {
 
 				// ----- ----- -----

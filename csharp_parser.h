@@ -371,7 +371,7 @@ public:
 	void apply_attributes(Node* node); // to co nazbieral info aplikuje
 	void apply_modifiers(Node* node);
 
-	void parse_using_directives(NamespaceNode* node);
+	void parse_using_directive(NamespaceNode* node);
 	bool parse_class_member(ClassNode* node);
 	bool parse_namespace_member(NamespaceNode* node);
 	void parse_interface_member(InterfaceNode* node);

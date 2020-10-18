@@ -39,7 +39,8 @@ using CSM = CSharpParser::Modifier;
 		case CST::TK_KW_STATIC: \
 		case CST::TK_KW_UNSAFE: \
 		case CST::TK_KW_VIRTUAL: \
-		case CST::TK_KW_VOLATILE:
+		case CST::TK_KW_VOLATILE: \
+		case CST::TK_KW_ASYNC:
 
 #define CASELITERAL case CST::TK_LT_INTEGER: \
 		case CST::TK_LT_REAL: \
@@ -544,11 +545,17 @@ string CSharpParser::parse_expression() {
 		case CST::TK_EMPTY: {
 			return res;
 		}
-		case CST::TK_CURSOR:
-		{
+		case CST::TK_CURSOR: {
 			INCPOS(1); break;
 		}
-
+		case CST::TK_KW_AWAIT: {
+			INCPOS(1); // ignore
+			break;
+		}
+		case CST::TK_KW_AS: {
+			INCPOS(1); // ignore (postfix cast)
+			break;
+		}
 		case CST::TK_KW_NEW: {
 			
 			// new Int32(1) + 9 <-- this is expression
@@ -974,9 +981,9 @@ std::string CSharpParser::parse_type(bool array_constructor) {
 	return res;
 }
 
-void CSharpParser::parse_using_directives(NamespaceNode* node) {
+void CSharpParser::parse_using_directive(NamespaceNode* node) {
 
-	// TODO nieskonczone
+	// TODO struct using directives node
 
 	// using X;
 	// using static X;
@@ -987,16 +994,31 @@ void CSharpParser::parse_using_directives(NamespaceNode* node) {
 
 	INCPOS(1);
 
-	// read name
-	if (GETTOKEN(0) != CST::TK_IDENTIFIER) return;
+	bool is_static = false;
+	bool is_alias = false;
 
-	string name = TOKENDATA(0);
-	node->using_directives.push_back(name);
-	INCPOS(1);
+	if (GETTOKEN(0) == CST::TK_KW_STATIC) {
+		INCPOS(1);
+		is_static = true;
+	}
 
-	// ;
-	INCPOS(1);
+	// read name or type
+	string name_or_type = parse_type();
+	string refers_to;
 
+	if (GETTOKEN(0) == CST::TK_OP_ASSIGN) {
+		INCPOS(1);
+		is_alias = true;
+		refers_to = parse_type();
+	}
+
+
+	if (GETTOKEN(0) != CST::TK_SEMICOLON) {
+		// todo error
+	}
+
+	node->using_directives.push_back(name_or_type);
+	INCPOS(1); // skip ';'
 
 }
 
@@ -1028,7 +1050,7 @@ bool CSharpParser::parse_namespace_member(NamespaceNode* node) {
 
 							   // using directives
 	case CST::TK_KW_USING: {
-		parse_using_directives(node);
+		parse_using_directive(node);
 		break;
 	}
 
@@ -1667,6 +1689,18 @@ CSharpParser::MethodNode* CSharpParser::parse_method(string name, string return_
 			INCPOS(1);
 			string val = parse_expression();
 			argument->value = val;
+			break;
+		}
+		case CST::TK_KW_IN: {
+			INCPOS(1); // ignore
+			break;
+		}
+		case CST::TK_KW_OUT: {
+			INCPOS(1); // ignore
+			break;
+		}
+		case CST::TK_KW_REF: {
+			INCPOS(1); // ignore
 			break;
 		}
 		default: {
