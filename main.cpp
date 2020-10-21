@@ -10,7 +10,7 @@ using namespace std;
 int main() {
 
 	ifstream file;
-	file.open("script4.cs");
+	file.open("script3.cs");
 
 	stringstream str_stream;
 	str_stream << file.rdbuf();
@@ -28,8 +28,6 @@ int main() {
 	//for (int i = 0; i < str.size(); i++) {
 	//	std::cout << (int)str[i] << " ";
 	//}
-
-	
 
 	CSharpLexer lexer;
 	lexer.set_code(str);

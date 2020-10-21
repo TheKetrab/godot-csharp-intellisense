@@ -97,6 +97,10 @@ class CSharpParser {
 
 	};
 
+	struct FileNode : public Node {
+
+	};
+
 	// w namespace'ie sa inne namespace'y i klasy
 	// using directives refers ONLY to current namespace or global(aka filenode)
 	// N1 { using System; } ... N1 { SYSTEM NOT VISIBLE !!! }
@@ -275,6 +279,9 @@ class CSharpParser {
 	// ----- ----- -----
 	// CLASS
 
+	vector<FileNode*> files;
+
+
 	Node* root;		// glowny wezel pliku
 	Node* current;  // dla parsera (to gdzie jest podczas parsowania)
 	Node* cursor;   // wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
@@ -285,7 +292,8 @@ class CSharpParser {
 	int modifiers;
 	vector<CSharpLexer::TokenData> tokens;
 	vector<string> attributes;
-
+	void unexpeced_token_error();
+	bool is_actual_token(CSharpLexer::Token tk, bool assert = false);
 public:
 	// constructors
 	CSharpParser(vector<CSharpLexer::TokenData>& tokens);
@@ -331,6 +339,11 @@ private:
 
 	static void indentation(int n);
 
+	CSharpLexer::Token curtok; // current token (valid)
+	bool assert(CSharpLexer::Token tk); // make sure what is curtok
+	void inc_pos();
+	void error(string msg);
+	CSharpLexer::Token get_valid_token(int offset); // offset != 0 // valid token
 
 	void debug_info();
 
