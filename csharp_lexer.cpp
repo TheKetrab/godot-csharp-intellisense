@@ -1,8 +1,11 @@
+#include <iostream>
 #include "csharp_lexer.h"
-using namespace std;
 
+using namespace std;
 using CST = CSharpLexer::Token;
 
+#define GETCHAR(ofs) ((ofs + pos) >= len ? 0 : code[ofs+pos])
+#define INCPOS(ammount) { pos += ammount; column += ammount; } // warning - no line skipping
 
 const char* CSharpLexer::token_names[(int)CST::TK_MAX] = {
 
@@ -62,44 +65,50 @@ const char* CSharpLexer::token_names[(int)CST::TK_MAX] = {
 
 #include <iostream>
 
-void CSharpLexer::clear() {
+void CSharpLexer::clear_state() {
+
 	tokens.clear();
 
+	pos = 0;
 	line = 0;
 	column = 0;
 
-	code_pos = 0;
-	comment_mode = false;
+	verbatim_mode = false;
+	interpolated_mode = false;
+	possible_generic = false;
+	force_generic_close = false;
 
 }
 
-CSharpLexer::Token CSharpLexer::get_last_token() {
+CSharpLexer::Token CSharpLexer::_get_last_token() const {
 
 	int n = tokens.size();
 	if (n == 0) return CST::TK_EMPTY;
-
 	return tokens[n-1].type;
 
 }
 
 void CSharpLexer::tokenize() {
-	clear();
+
+	clear_state();
 	_tokenize();
 }
 
-#define GETCHAR(ofs) ((ofs + code_pos) >= len ? 0 : _code[ofs+code_pos])
-#define INCPOS(ammount) { code_pos += ammount; column += ammount; } // warning - no line skipping
-
-
-
-CSharpLexer::CSharpLexer()
-	: _code(""), len(0), code_pos(0), line(0), column(0), comment_mode(false), verbatim_mode(false)
-{
+CSharpLexer::CSharpLexer(string code) {
+	clear_state();
+	this->code = code;
+	this->len = code.size();
 }
+
+
+vector<CSharpLexer::TokenData> CSharpLexer::get_tokens() const {
+	return tokens;
+}
+
 
 void CSharpLexer::_tokenize() {
 
-	if (code_pos >= len) {
+	if (pos >= len) {
 		_make_token(CST::TK_EOF);
 		return;
 	}
@@ -124,7 +133,7 @@ void CSharpLexer::_tokenize() {
 		if (possible_generic) {
 
 			// if one of the following tokens, disable possible generic mode
-			Token last_token = get_last_token();
+			Token last_token = _get_last_token();
 			switch (last_token) {
 			case CST::TK_IDENTIFIER:        // part of name
 			case CST::TK_PERIOD:            // typename.class...
@@ -155,20 +164,20 @@ void CSharpLexer::_tokenize() {
 				break;
 			}
 			case '#': {
-				skip_until_newline();
+				_skip_until_newline();
 				// TODO readuntil newline and add token DIRECTIVE, what if multiline directive?
 				break;
 			}
 			case '\'': {
 				INCPOS(1); // skip ' char
-				string char_literal = read_char_literal();
+				string char_literal = _read_char_literal();
 				_make_token(CST::TK_LT_CHAR, char_literal);
 				INCPOS(1); // skip ' char
 				break;
 			}
 			case '\"': {
 				INCPOS(1); // skip " char
-				string string_literal = read_string_literal();
+				string string_literal = _read_string_literal();
 				if (interpolated_mode) {
 					_make_token(CST::TK_LT_INTERPOLATED, string_literal);
 					interpolated_mode = false;
@@ -188,13 +197,13 @@ void CSharpLexer::_tokenize() {
 				// linear comment
 				if (GETCHAR(1) == '/') {
 					INCPOS(2);
-					skip_until_newline();
+					_skip_until_newline();
 					break;
 				}
 				// block comment
 				else if (GETCHAR(1) == '*') {
 					INCPOS(2);
-					skip_until("*/");
+					_skip_until("*/");
 					break;
 				}
 				else {
@@ -233,17 +242,17 @@ void CSharpLexer::_tokenize() {
 				typicalcases:
 				char c = GETCHAR(0); // first sign of the word
 
-				if (_is_whitespace(c)) {
-					skip_whitespace();
+				if (is_whitespace(c)) {
+					_skip_whitespace();
 				}
 
 				// indentifier or keyword (a-z, A-Z, _)
-				else if (_is_text_char(c) && !_is_number(c)) {
+				else if (is_text_char(c) && !is_number(c)) {
 
 					string word = "";
 					Token type = CST::TK_EMPTY;
 
-					if (read_word(word, type)) {
+					if (_read_word(word, type)) {
 						if (type == CST::TK_IDENTIFIER)
 							_make_identifier(word);
 						else
@@ -251,23 +260,23 @@ void CSharpLexer::_tokenize() {
 					}
 					else {
 						_make_token(CST::TK_ERROR);
-						skip_until_whitespace();
+						_skip_until_whitespace();
 					}
 				}
 
 				// integer or real literal (0-9, .)
-				else if (_is_number(c) || (c == '.' && _is_number(GETCHAR(1)))) {
+				else if (is_number(c) || (c == '.' && is_number(GETCHAR(1)))) {
 
 					string number = "";
 					Token type = CST::TK_EMPTY;
 					if (c == '.') type = CST::TK_LT_REAL;
 
-					if (read_number(number, type)) {
+					if (_read_number(number, type)) {
 						_make_token(type, number);
 					}
 					else {
 						_make_token(CST::TK_ERROR);
-						skip_until_whitespace();
+						_skip_until_whitespace();
 					}
 
 				}
@@ -276,7 +285,7 @@ void CSharpLexer::_tokenize() {
 				else {
 
 					Token type = Token(CST::TK_EMPTY);
-					if (read_special_char(type)) {
+					if (_read_special_char(type)) {
 						_make_token(type);
 					}
 					else {
@@ -292,7 +301,7 @@ void CSharpLexer::_tokenize() {
 
 
 
-string CSharpLexer::skip_until_newline() {
+string CSharpLexer::_skip_until_newline() {
 
 	char c; string res = "";
 	while ((c = GETCHAR(0)) != '\n') {
@@ -306,17 +315,17 @@ string CSharpLexer::skip_until_newline() {
 	return res;
 }
 
-void CSharpLexer::skip_whitespace() {
+void CSharpLexer::_skip_whitespace() {
 
 	char c;
-	while ((c = GETCHAR(0)) > 0 && _is_whitespace(c))
+	while ((c = GETCHAR(0)) > 0 && is_whitespace(c))
 		INCPOS(1);
 }
 
-string CSharpLexer::skip_until_whitespace() {
+string CSharpLexer::_skip_until_whitespace() {
 
 	char c; string res = "";
-	while ((c = GETCHAR(0)) > 0 && !_is_whitespace(c)) {
+	while ((c = GETCHAR(0)) > 0 && !is_whitespace(c)) {
 		res += c; INCPOS(1);
 	}
 
@@ -324,17 +333,17 @@ string CSharpLexer::skip_until_whitespace() {
 }
 
 // returns skipped string
-string CSharpLexer::skip_until(string str) {
+string CSharpLexer::_skip_until(string str) {
 
 	char c; string res = "";
-	while ((c = GETCHAR(0)) > 0 && !_code.substr(code_pos).rfind(str, 0) == 0) { // begins with
+	while ((c = GETCHAR(0)) > 0 && !code.substr(pos).rfind(str, 0) == 0) { // begins with
 		res += c; INCPOS(1);
 	}
 
 	return res;
 }
 
-string CSharpLexer::read_char_literal() {
+string CSharpLexer::_read_char_literal() {
 
 	string res = "";
 	if (GETCHAR(0) == '\\') { res += GETCHAR(0) + GETCHAR(1);	INCPOS(2); }
@@ -344,7 +353,7 @@ string CSharpLexer::read_char_literal() {
 }
 
 
-string CSharpLexer::read_string_in_brackets() {
+string CSharpLexer::_read_string_in_brackets() {
 
 	int depth = 0;
 	char c; string res;
@@ -363,14 +372,14 @@ string CSharpLexer::read_string_in_brackets() {
 	return res;
 }
 
-string CSharpLexer::read_string_literal() {
+string CSharpLexer::_read_string_literal() {
 
 	char c; string res = "";
 	while ((c = GETCHAR(0)) > 0) {
 
 		if (interpolated_mode) {
 			if (c == '{') {
-				res += read_string_in_brackets();
+				res += _read_string_in_brackets();
 				continue;
 			}
 		}
@@ -393,16 +402,12 @@ string CSharpLexer::read_string_literal() {
 
 }
 
-void CSharpLexer::set_code(const string& code) {
-	this->_code = string(code);
-	this->len = code.length();
-}
 
 // returns true if read successful
-bool CSharpLexer::read_word(string& word, Token& type) {
+bool CSharpLexer::_read_word(string& word, Token& type) {
 
 	char c;
-	while ((c = GETCHAR(0)) > 0 && _is_text_char(c)) {
+	while ((c = GETCHAR(0)) > 0 && is_text_char(c)) {
 		INCPOS(1); word += c;
 	}
 
@@ -418,7 +423,7 @@ static char ToUpper(char c) {
 }
 
 
-bool CSharpLexer::read_number(string& number, Token& type) {
+bool CSharpLexer::_read_number(string& number, Token& type) {
 
 	bool has_suffix = false;
 	bool hex_mode = false;
@@ -452,18 +457,18 @@ bool CSharpLexer::read_number(string& number, Token& type) {
 		if (c == '_') { INCPOS(1); continue; }
 
 		if (bin_mode) {
-			if (_is_bin(c)) { number += c;	INCPOS(1); }
+			if (is_bin(c)) { number += c;	INCPOS(1); }
 			else { suffix_mode = true; } // sth strange... maybe suffix?
 		}
 
 		else if (hex_mode) {
-			if (_is_hex(c)) { number += c; INCPOS(1); }
+			if (is_hex(c)) { number += c; INCPOS(1); }
 			else { suffix_mode = true; } // sth strange... maybe suffix?
 		}
 
 		else {
 			if (c == 'e' || c == 'E' || c == '.') { real_mode = true; }
-			else if (_is_number(c)) { number += c; INCPOS(1); }
+			else if (is_number(c)) { number += c; INCPOS(1); }
 			else { suffix_mode = true; } // sth strange... maybe suffix?
 		}
 	}
@@ -478,7 +483,7 @@ bool CSharpLexer::read_number(string& number, Token& type) {
 		if (c == '.' && !has_dot) {
 
 			// another MUST be a digit
-			if (_is_number(GETCHAR(1))) {
+			if (is_number(GETCHAR(1))) {
 				number += '.' + GETCHAR(1);
 				has_dot = true;
 				INCPOS(2);
@@ -492,13 +497,13 @@ bool CSharpLexer::read_number(string& number, Token& type) {
 		// exponent part => sign? decimal_digit+
 		else if ((c == 'e' || c == 'E') && !has_exponent) {
 
-			if (GETCHAR(1) == '+' && _is_number(GETCHAR(2))) {
+			if (GETCHAR(1) == '+' && is_number(GETCHAR(2))) {
 				has_exponent = true; number += c + GETCHAR(1) + GETCHAR(2); INCPOS(3);
 			}
-			else if (GETCHAR(1) == '-' && _is_number(GETCHAR(2))) {
+			else if (GETCHAR(1) == '-' && is_number(GETCHAR(2))) {
 				has_exponent = true; number += c + GETCHAR(1) + GETCHAR(2); INCPOS(3);
 			}
-			else if (_is_number(GETCHAR(1))) {
+			else if (is_number(GETCHAR(1))) {
 				has_exponent = true; number += c + GETCHAR(1); INCPOS(2);
 			}
 			else {
@@ -507,7 +512,7 @@ bool CSharpLexer::read_number(string& number, Token& type) {
 		}
 
 		else {
-			if (_is_number(c)) { number += c; INCPOS(1); }
+			if (is_number(c)) { number += c; INCPOS(1); }
 			else { suffix_mode = true; } // sth strange... maybe suffix?
 		}
 	}
@@ -551,7 +556,7 @@ bool CSharpLexer::read_number(string& number, Token& type) {
 }
 
 // try to read operator or punctuator
-bool CSharpLexer::read_special_char(Token& type) {
+bool CSharpLexer::_read_special_char(Token& type) {
 
 	switch (GETCHAR(0)) {
 
@@ -632,7 +637,7 @@ bool CSharpLexer::read_special_char(Token& type) {
 		else if (GETCHAR(1) == '<' && GETCHAR(2) == '=') { type = CST::TK_OP_ASSIGN_LEFT_SHIFT;	INCPOS(3); }
 		else if (GETCHAR(1) == '<') { type = CST::TK_OP_LEFT_SHIFT;		INCPOS(2); }
 		else { 
-			if (get_last_token() == CST::TK_IDENTIFIER) {
+			if (_get_last_token() == CST::TK_IDENTIFIER) {
 				possible_generic = true;
 			}
 			type = CST::TK_OP_LESS;
@@ -679,19 +684,14 @@ bool CSharpLexer::read_special_char(Token& type) {
 
 
 
-void CSharpLexer::_make_token(Token p_type, string data) {
+void CSharpLexer::_make_token(const Token p_type, const string& data) {
 	TokenData td = { p_type, data, line, column };
 	tokens.push_back(td);
 }
 
-void CSharpLexer::_make_identifier(const string& p_identifier) {
-	_make_token(CST::TK_IDENTIFIER, p_identifier);
+void CSharpLexer::_make_identifier(const string& identifier) {
+	_make_token(CST::TK_IDENTIFIER, identifier);
 }
-
-void CSharpLexer::_make_constant(const int& p_constant) {
-	//_make_token(TK_CONSTANT, string::num_int64(p_constant));
-}
-
 
 bool CSharpLexer::_is_keyword(const string& word, Token& type) const {
 
@@ -738,35 +738,33 @@ bool CSharpLexer::is_assignment_operator(Token& type) {
 	}
 }
 
-bool CSharpLexer::_is_text_char(char c) {
+bool CSharpLexer::is_text_char(char c) {
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
 
 
-bool CSharpLexer::_is_number(char c) {
+bool CSharpLexer::is_number(char c) {
 
 	return (c >= '0' && c <= '9');
 }
 
-bool CSharpLexer::_is_hex(char c) {
+bool CSharpLexer::is_hex(char c) {
 
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-bool CSharpLexer::_is_bin(char c) {
+bool CSharpLexer::is_bin(char c) {
 
 	return (c == '0' || c == '1');
 }
 
-bool CSharpLexer::_is_whitespace(char c) {
+bool CSharpLexer::is_whitespace(char c) {
 
 	return (c == ' ' || c == '\t' || c == '\f');
 }
 
 
-
-#include <iostream>
-void CSharpLexer::print_tokens() {
+void CSharpLexer::print_tokens() const {
 
 	int n = tokens.size();
 	int i = 0;
@@ -800,8 +798,3 @@ void CSharpLexer::print_tokens() {
 		cout << endl;
 	}
 }
-
-
-
-
-

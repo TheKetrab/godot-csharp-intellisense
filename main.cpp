@@ -29,8 +29,7 @@ int main() {
 	//	std::cout << (int)str[i] << " ";
 	//}
 
-	CSharpLexer lexer;
-	lexer.set_code(str);
+	CSharpLexer lexer(str);
 	lexer.tokenize();
 
 	cout << "----- ----- -----" << endl;
@@ -39,9 +38,8 @@ int main() {
 
 	lexer.print_tokens();
 	
-	CSharpParser parser;
-	parser.set_tokens(lexer.tokens);
-	parser.parse();
+	auto tokens = lexer.get_tokens();
+	CSharpParser::get_instance()->parse(tokens);
 
 
 	cout << endl << endl << endl;

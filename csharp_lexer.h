@@ -1,4 +1,3 @@
-// KETRAB
 #ifndef CSHARP_LEXER_H
 #define CSHARP_LEXER_H
 
@@ -6,8 +5,8 @@
 #include <vector>
 #include <iostream>
 #include <string>
+
 using namespace std;
-// lekser to maszynka ktora sobie jedzie po tekscie i tworzy liste tokenow
 
 class CSharpLexer {
 
@@ -73,13 +72,67 @@ public:
 
 	struct TokenData {
 		Token type;
-		std::string data;
+		string data;
 		int line;
 		int column;
 	};
 
-	vector<TokenData> tokens;
+	static const char* token_names[(int)Token::TK_MAX];
 
+
+private:
+	vector<TokenData> tokens;    // generated tokens
+	string code;                 // code to analyze
+	int len;                     // length of the code
+
+	int pos;                     // current position in 'code' string
+	int line;                    // real line of current position in code
+	int column;                  // real column of current position in code
+
+	bool verbatim_mode;
+	bool interpolated_mode;
+	bool possible_generic;
+	bool force_generic_close;    // each '>' is interpreted as TK(>), don't care about GETCHAR(1) 
+
+
+public:
+	CSharpLexer(string code);
+	~CSharpLexer() = default;
+
+	void tokenize();           // start tokenize procedure
+	void clear_state();        // clear state of current object (prepare to retokenize)
+	void print_tokens() const;
+	vector<TokenData> get_tokens() const;
+
+	static bool is_text_char(char c);     // a-z A-Z 0-9 _
+	static bool is_number(char c);        // 0-9
+	static bool is_hex(char c);           // 0-9 a-f A-F
+	static bool is_bin(char c);           // 0 1
+	static bool is_whitespace(char c);    // space, tab, newline
+	static bool is_operator(Token& type);
+	static bool is_assignment_operator(Token& type);
+
+private:
+	void _tokenize();
+	void _make_token(const Token p_type, const string &data = "");
+	void _make_identifier(const string &identifier);
+
+	void _skip_whitespace();
+	string _skip_until_newline();
+	string _skip_until(string str); // na przyklad dla skip do konca komentarza blokowego
+	string _skip_until_whitespace();
+	string _read_char_literal();
+	string _read_string_literal();
+	string _read_string_in_brackets();
+
+	bool _read_word(string& word, Token& type); // read until identifier character
+	bool _read_number(string& number, Token& type);
+	bool _read_special_char(Token& type);
+	bool _is_keyword(const string& word, Token& type) const;
+
+	Token _get_last_token() const;
+
+private:
 	static const Token RESERVED_KEYWORDS_BEGIN = Token::TK_KW_ABSTRACT;
 	static const Token RESERVED_KEYWORDS_END = Token::TK_KW_WHILE;
 	static const Token CONTEXT_KEYWORDS_BEGIN = Token::TK_KW_ADD;
@@ -87,67 +140,6 @@ public:
 	static const Token OPS_BEGIN = Token::TK_OP_ADD;
 	static const Token OPS_END = Token::TK_OP_ASSIGN_RIGHT_SHIFT;
 
-
-public:
-	static const char* token_names[(int)Token::TK_MAX];
-
-public:
-	void tokenize(); // start tokenize procedure
-	void clear(); // clear state of current object (prepare to tokenize again)
-	void print_tokens();
-	void set_code(const std::string &code);
-
-	static bool _is_text_char(char c);
-	static bool _is_number(char c);
-	static bool _is_hex(char c);
-	static bool _is_bin(char c);
-	static bool _is_whitespace(char c);
-
-
-private:
-	string _code;  // code to analyze
-	int len;      // length of the code
-
-	int code_pos; // i-ta pozycja w stringu _code
-	int line;
-	int column;
-
-	bool comment_mode = false;
-	bool verbatim_mode = false;
-	bool interpolated_mode = false;
-	bool possible_generic = false;
-	bool force_generic_close = false; // each '>' is interpreted as TK(>), don't care about GETCHAR(1) 
-
-public:
-	CSharpLexer();
-
-	void _tokenize();
-
-
-	void _make_token(Token p_type, string data = "");
-	//void _make_newline(int p_indentation = 0, int p_tabs = 0);
-	void _make_identifier(const string& p_identifier);
-	void _make_constant(const int& p_constant);
-	//void _make_type(const Variant::Type &p_type);
-	//void _make_error(const String &p_error);
-
-	string skip_until_newline();
-	void skip_whitespace();
-	string skip_until(string str); // na przyklad dla skip do konca komentarza blokowego
-	string skip_until_whitespace();
-	string read_char_literal();
-	string read_string_literal();
-	string read_string_in_brackets();
-
-
-	Token get_last_token();
-
-	bool read_word(string& word, Token& type); // read until identifier character
-	bool read_number(string& number, Token& type);
-	bool read_special_char(Token& type);
-	bool _is_keyword(const string& word, Token& type) const;
-	static bool is_operator(Token& type);
-	static bool is_assignment_operator(Token& type);
 };
 
 

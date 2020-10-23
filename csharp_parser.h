@@ -5,17 +5,10 @@
 #include "csharp_lexer.h"
 #include <string>
 #include <vector>
+
 // klasa nie ma parsowac i wykonywac, tylko okreslic kontekst
 // czyli wystarczy, ze zbudujemy taka strukture listowo-drzewiasta i okreslimy co widac
-
-// dokument to jesen wielki NodeBlock
-
-
-// jesli bedzie jakis nieobslugiwalny blad to funkcje parse_XXX zwracaja nullptr
-
-
-// wszystkie zmienne jakie sa widoczne, wszystkie metody - to sobie okresle jak juz sparsuje
-
+// parser przechowuje sparsowane przez siebie pliki w formie FileNode
 
 // Node
 //    NamespaceNode
@@ -42,11 +35,13 @@
 using namespace std;
 #include <map>
 #include <iostream>
+#include <unordered_map>
 const int TAB = 2;
 
 class CSharpParser {
 
 	struct Node;
+	struct FileNode;
 	struct NamespaceNode;
 	struct EnumNode;
 	struct GenericNode;
@@ -83,10 +78,10 @@ class CSharpParser {
 			this->column = td.column;
 		}
 
-		virtual void print(int indent) = 0;
+		virtual void print(int indent) const = 0;
 
 		template <class T>
-		void print_header(int indent, vector<T*>& v, string title) {
+		void print_header(int indent, vector<T*>& v, string title) const {
 
 			indentation(indent);
 			cout << title << " ";
@@ -99,34 +94,38 @@ class CSharpParser {
 
 	struct FileNode : public Node {
 
+		vector<string> using_directives;
+		vector<string> using_static_direcvites;
+		vector<string> directives;
+		vector<string> labels;
+
+		vector<NamespaceNode*> namespaces;
+		vector<ClassNode*> classes;
+
+		void print(int indent) const override;
 	};
 
 	// w namespace'ie sa inne namespace'y i klasy
 	// using directives refers ONLY to current namespace or global(aka filenode)
 	// N1 { using System; } ... N1 { SYSTEM NOT VISIBLE !!! }
 	struct NamespaceNode : public Node {
+
 		vector<NamespaceNode*> namespaces;
 		vector<ClassNode*> classes;
 		vector<StructNode*> structures;
 		vector<InterfaceNode*> interfaces;
 		vector<EnumNode*> enums;
+		vector<DelegateNode*> delegates;
 
-		vector<string> using_directives;
-		vector<string> using_static_directives;
-
-		NamespaceNode();
-
-		void print(int indent) override;
+		void print(int indent) const override;
 	};
 
 	struct EnumNode : public Node {
 
 		string type = "int"; // domyslnie int
 		vector<string> members;
-		EnumNode() {}
-		// todo
 
-		void print(int indent) override;
+		void print(int indent) const override;
 	};
 
 	// abstract
@@ -135,26 +134,20 @@ class CSharpParser {
 		bool is_generic = false;
 		vector<string> generic_declarations;
 		string constraints;
-
 	};
 
 	struct InterfaceNode : public GenericNode {
 
 		vector<string> base_types; // base interfaces
-
-		// members:
 		vector<MethodNode*> methods;
 		vector<PropertyNode*> properties;
 
-		void print(int indent) override;
-
+		void print(int indent) const override;
 	};
 
 	struct StructNode : public GenericNode {
 
 		vector<string> base_types; // base class and interfaces
-
-		// members:
 		vector<VarNode*> variables;
 		vector<MethodNode*> methods;
 		vector<ClassNode*> classes;
@@ -162,24 +155,23 @@ class CSharpParser {
 		vector<StructNode*> structures;
 		vector<EnumNode*> enums;
 		vector<PropertyNode*> properties;
+		vector<DelegateNode*> delegates;
 
-		void print(int indent) override;
-
+		void print(int indent) const override;
 	};
 
 	struct ClassNode : public StructNode {
 
-		void print(int indent) override;
-
-		ClassNode() {}
+		void print(int indent) const override;
 	};
 
 	struct MethodNode : public GenericNode {
-		string return_type = "";
+
+		string return_type;
 		vector<VarNode*> arguments;
 		StatementNode* body = nullptr;
 
-		void print(int indent) override;
+		void print(int indent) const override;
 	};
 
 	struct DelegateNode : public GenericNode {
@@ -187,11 +179,13 @@ class CSharpParser {
 	};
 
 	struct VarNode : public Node {
+
 		string type;
 		string value;
 
-		void print(int indent) override;
-		VarNode() : type("") {}
+		void print(int indent) const override;
+
+		VarNode() = default;
 		VarNode(string name, string type) {
 			this->name = name;
 			this->type = type;
@@ -202,11 +196,10 @@ class CSharpParser {
 
 		int get_modifiers = 0;
 		int set_modifiers = 0;
-
 		StatementNode* get_statement = nullptr;
 		StatementNode* set_statement = nullptr;
 
-		void print(int indent) override;
+		void print(int indent) const override;
 	};
 
 	// ----- ----- ----- ----- -----
@@ -215,8 +208,8 @@ class CSharpParser {
 	struct StatementNode : public Node {
 		// TODO parse label statement: identifier ":" statement (dla goto, etykiety)
 		string raw;
-		StatementNode* next = nullptr;
-		void print(int indent) override;
+		StatementNode* prev = nullptr; // polaczone w liste, zeby mozna bylo przejsc do tylu i poszukac deklaracji
+		void print(int indent) const override;
 	};
 
 	struct ExpressionNode : public StatementNode {
@@ -225,7 +218,7 @@ class CSharpParser {
 	};
 
 	struct BlockNode : public StatementNode {
-		StatementNode* body = nullptr;
+		StatementNode* last_node = nullptr;
 	};
 
 	struct ConditionNode : public StatementNode {
@@ -241,18 +234,19 @@ class CSharpParser {
 		LoopNode::Type loop_type = Type::UNKNOWN;
 		VarNode* local_variable = nullptr;
 		StatementNode* body = nullptr;
-
-
 	};
 
 	struct DeclarationNode : public StatementNode {
+
 		VarNode* variable;
 	};
 
 	struct JumpNode : public StatementNode {
+
 		enum class Type {
 			UNKNOWN, BREAK, CONTINUE, GOTO, RETURN, YIELD, THROW
 		};
+
 		JumpNode::Type jump_type = Type::UNKNOWN;
 	};
 
@@ -265,98 +259,9 @@ class CSharpParser {
 
 		VarNode* local_variable = nullptr;
 		StatementNode* body = nullptr;
-
 	};
 	// ----- ----- ----- ----- -----
-
-
-
-
-
-
-
-
-	// ----- ----- -----
-	// CLASS
-
-	vector<FileNode*> files;
-
-
-	Node* root;		// glowny wezel pliku
-	Node* current;  // dla parsera (to gdzie jest podczas parsowania)
-	Node* cursor;   // wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
-
-	int pos;
-	int len; // ilosc tokenow
-
-	int modifiers;
-	vector<CSharpLexer::TokenData> tokens;
-	vector<string> attributes;
-	void unexpeced_token_error();
-	bool is_actual_token(CSharpLexer::Token tk, bool assert = false);
 public:
-	// constructors
-	CSharpParser(vector<CSharpLexer::TokenData>& tokens);
-	CSharpParser(string code);
-	CSharpParser();
-
-	void set_tokens(vector<CSharpLexer::TokenData>& tokens);
-
-	// methods
-	void parse(); // parse tokens to tree-structure
-	void clear(); // set state to zero
-
-private:
-
-	NamespaceNode* parse_namespace(bool global);
-	ClassNode* parse_class();
-	StructNode* parse_struct();
-	InterfaceNode* parse_interface();
-	EnumNode* parse_enum();
-	LoopNode* parse_loop();
-	VarNode* parse_declaration();
-	JumpNode* parse_jump();
-	TryNode* parse_try();
-	UsingNode* parse_using_statement();
-	StatementNode* parse_statement();
-	string parse_expression();
-	MethodNode* parse_method_declaration(string name, string return_type, bool interface_context = false);
-	BlockNode* parse_block();
-	ConditionNode* parse_if_statement();
-	TryNode* parse_try_statement();
-	ConditionNode* parse_switch_statement();
-	PropertyNode* parse_property(string name, string type);
-	StatementNode* parse_property_definition();
-
-	DelegateNode* parse_delegate();
-	string parse_type(bool array_constructor = false);
-	string parse_new();
-	string parse_initialization_block();
-	string parse_method_invocation();
-	string parse_constraints();
-	vector<string> parse_generic_declaration(); // parse <T,U,...>
-	vector<string> parse_derived_and_implements(bool generic_context = false); // parse : C1, I1, I2, ...
-
-	static void indentation(int n);
-
-	CSharpLexer::Token curtok; // current token (valid)
-	bool assert(CSharpLexer::Token tk); // make sure what is curtok
-	void inc_pos();
-	void error(string msg);
-	CSharpLexer::Token get_valid_token(int offset); // offset != 0 // valid token
-
-	void debug_info();
-
-	// skipuje az do danego tokena, ktory jest na takim poziomie zaglebienia parsera w blokach (depth)
-	void skip_until_token(CSharpLexer::Token tk);
-
-
-	//void parse
-
-
-
-	public:
-	// for mask
 	enum class Modifier {
 		MOD_PUBLIC = 1,
 		MOD_PROTECTED = 1 << 1,
@@ -373,25 +278,101 @@ private:
 		MOD_UNSAFE = 1 << 12,
 		MOD_VIRTUAL = 1 << 13,
 		MOD_VOLATILE = 1 << 14,
-		MOD_ASYNC = 1 << 15
+		MOD_ASYNC = 1 << 15,
+		MOD_REF = 1 << 16,       //
+		MOD_IN = 1 << 17,        // for variables
+		MOD_OUT = 1 << 18,       //
+		MOD_PARAMS = 1 << 19     //
 	};
 
-public:
-	static map<CSharpLexer::Token, Modifier> to_modifier;
+
+	// ----- ----- -----
+	// CLASS
+private:
+
+	FileNode* being_parsed;		// glowny wezel pliku
+	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
+	Node* cursor;				// wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
+
+	int pos;                    // position of current token
+	int len;                    // total amount of tokens
+	int modifiers;              // state of flags of modifiers
+
+	vector<CSharpLexer::TokenData> tokens; // tokens of being parsed file
+	vector<string> attributes;
+
+	unordered_map<string, uint64_t> files_hash; // hashe plikow, czy sa aktualne dane
+	unordered_map<string, FileNode*> files; // dane o plikach przez nazwe
+	uint64_t compute_hash(string str);
+	static CSharpParser* _instance;
 	bool kw_value_allowed = false; // enable only when parse property->set
 
-	void parse_modifiers();
-	void parse_attributes();
 
-	void apply_attributes(Node* node); // to co nazbieral info aplikuje
-	void apply_modifiers(Node* node);
+public:
+	~CSharpParser();
+	void parse(string &code, string &filename);
+	void parse(vector<CSharpLexer::TokenData> &tokens);
+	void clear_state(); // set state to zero
 
-	void parse_using_directive(NamespaceNode* node);
-	bool parse_class_member(ClassNode* node);
-	bool parse_namespace_member(NamespaceNode* node);
-	bool parse_interface_member(InterfaceNode* node);
+	void error(string msg) const;
+	void debug_info() const;
+
+	static CSharpParser* get_instance();
+	static void indentation(int n);
+	static map<CSharpLexer::Token, Modifier> to_modifier;
+
+private:
+	CSharpParser(); // this is singleton
+	void _unexpeced_token_error() const;
+
+	bool _is_actual_token(CSharpLexer::Token tk, bool assert = false);
+	bool _assert(CSharpLexer::Token tk); // make sure what is curtok
+
+	NamespaceNode* _parse_namespace(bool global);
+	FileNode* _parse_file();
+	ClassNode* _parse_class();
+	StructNode* _parse_struct();
+	InterfaceNode* _parse_interface();
+	EnumNode* _parse_enum();
+	LoopNode* _parse_loop();
+	VarNode* _parse_declaration();
+	JumpNode* _parse_jump();
+	UsingNode* _parse_using_statement();
+	StatementNode* _parse_statement();
+	string _parse_expression();
+	MethodNode* _parse_method_declaration(string name, string return_type, bool interface_context = false);
+	BlockNode* _parse_block();
+	ConditionNode* _parse_if_statement();
+	TryNode* _parse_try_statement();
+	ConditionNode* _parse_switch_statement();
+	PropertyNode* _parse_property(string name, string type);
+	StatementNode* _parse_property_definition();
+	DelegateNode* _parse_delegate();
+	string _parse_type(bool array_constructor = false);
+	string _parse_new();
+	string _parse_initialization_block();
+	string _parse_method_invocation();
+	string _parse_constraints();
+	vector<string> _parse_generic_declaration(); // parse <T,U,...>
+	vector<string> _parse_derived_and_implements(bool generic_context = false); // parse : C1, I1, I2, ...
+
+	bool _parse_using_directive(FileNode* node);
+	bool _parse_class_member(ClassNode* node);
+	bool _parse_namespace_member(NamespaceNode* node);
+	bool _parse_interface_member(InterfaceNode* node);
+
+	void _parse_modifiers();
+	void _parse_attributes();
+	void _apply_modifiers(Node* node);
+	void _apply_attributes(Node* node);
+	
+	// skipuje az do danego tokena, ktory jest na takim poziomie zaglebienia parsera w blokach (depth)
+	void _skip_until_token(CSharpLexer::Token tk);
 
 
+public:
+	
+	// TODO future
 	// global -> jak parser.depth == node.depth, to wezel przeczytany
 	struct Depth {
 		int curly_bracket_depth = 0;
@@ -404,8 +385,6 @@ public:
 				&& parenthesis_depth == d.parenthesis_depth;
 		}
 	} depth;
-
-
 };
 
 #endif // CSHARP_PARSER_H
