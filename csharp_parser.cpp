@@ -4,7 +4,6 @@
 using CST = CSharpLexer::Token;
 using CSM = CSharpParser::Modifier;
 using namespace std;
-CSharpParser* CSharpParser::_instance = nullptr;
 
 #define GETTOKEN(ofs) ((ofs + pos) >= len ? CST::TK_ERROR : tokens[ofs + pos].type)
 #define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
@@ -87,57 +86,31 @@ std::map<CST, CSM> CSharpParser::to_modifier = {
 };
 
 
-void CSharpParser::parse(string &code, string &filename) {
+CSharpParser::FileNode* CSharpParser::parse() {
 
-	uint64_t h1 = 0, h2 = 0;
-	bool file_ever_parsed = false;
+	clear_state();
+	this->tokens = tokens;
+	FileNode* node = _parse_file();
 
-	// is it necessery to parse?
-	auto h_iter = files_hash.find(filename);
-	if (h_iter != files_hash.end()) {
+	return node;
+}
 
-		file_ever_parsed = true;
-		h1 = h_iter->second;
-		h2 = compute_hash(code);
-		if (h1 == h2) return;
-	}
-	else {
-		h2 = compute_hash(code);
-	}
+CSharpParser::CSharpParser(string code) {
+
+	clear_state();
 
 	// lexical analyze
 	CSharpLexer lexer(code);
 	lexer.tokenize();
-	auto tokens = lexer.get_tokens();
-	
-	// parse
-	clear_state();
-	this->tokens = tokens;
-	FileNode* node = _parse_file();
-	node->name = filename;
-	
-	files.insert({ filename, node });
-	files_hash.insert({ filename, h2 });
+
+	this->tokens = lexer.get_tokens();
+	this->len = this->tokens.size();
 
 }
 
-void CSharpParser::parse(vector<CSharpLexer::TokenData> &tokens) {
-
-	clear_state();
-	this->tokens = tokens;
-
-	FileNode* node = _parse_file();
-	string filename = "unnamed" + tokens.size();
-	node->name = filename;
-
-	files.insert({ filename, node });
-	files_hash.insert({ filename, 0 });
-
-}
 
 void CSharpParser::clear_state() {
 
-	being_parsed     = nullptr;
 	current          = nullptr;
 	cursor           = nullptr;
 	pos              = 0;      
@@ -1093,12 +1066,6 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 	return res;
 }
 
-CSharpParser* CSharpParser::get_instance() {
-	if (_instance == nullptr)
-		_instance = new CSharpParser();
-	return _instance;
-}
-
 bool CSharpParser::_parse_using_directive(FileNode* node) {
 
 	// TODO struct using directives node
@@ -1412,13 +1379,13 @@ void CSharpParser::NamespaceNode::print(int indent) const {
 	cout << "NAMESPACE " << name << ":" << endl;
 
 	// HEADERS:
-	/*
+	
 	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "namespaces:");
 	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "interfaces:");
 	if (classes.size() > 0) print_header(indent + TAB, classes, "classes:");
 	if (structures.size() > 0) print_header(indent + TAB, structures, "structures:");
 	if (enums.size() > 0) print_header(indent + TAB, enums, "enums:");
-	*/
+	
 	// NODES:
 
 	if (namespaces.size() > 0)
@@ -1725,10 +1692,6 @@ CSharpParser::StatementNode* CSharpParser::_parse_property_definition() {
 	}
 
 	return nullptr;
-}
-
-CSharpParser::CSharpParser() {
-
 }
 
 CSharpParser::PropertyNode* CSharpParser::_parse_property(string name, string type)
@@ -2090,11 +2053,7 @@ CSharpParser::BlockNode* CSharpParser::_parse_block() {
 
 }
 
-uint64_t CSharpParser::compute_hash(string str)
-{
-	 // TODO
-	return 0;
-}
+
 
 CSharpParser::~CSharpParser() {
 
@@ -2113,7 +2072,7 @@ void CSharpParser::ClassNode::print(int indent) const {
 			cout << " " << x;
 		cout << endl;
 	}
-	/*
+	
 	if (interfaces.size() > 0)			print_header(indent + TAB, interfaces, "interfaces:");
 	if (classes.size() > 0)				print_header(indent + TAB, classes, "classes:");
 	if (structures.size() > 0)			print_header(indent + TAB, structures, "structures:");
@@ -2121,7 +2080,7 @@ void CSharpParser::ClassNode::print(int indent) const {
 	if (methods.size() > 0)				print_header(indent + TAB, methods, "methods:");
 	if (properties.size() > 0)			print_header(indent + TAB, properties, "properties:");
 	if (variables.size() > 0)			print_header(indent + TAB, variables, "variables:");
-	*/
+	
 	// NODES:
 	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
 	if (classes.size() > 0)		for (ClassNode* x : classes)		x->print(indent + TAB);
@@ -2142,7 +2101,7 @@ void CSharpParser::StructNode::print(int indent) const {
 		cout << endl;
 	}
 
-/*
+
 	if (interfaces.size() > 0)			print_header(indent + TAB, interfaces, "interfaces:");
 	if (classes.size() > 0)				print_header(indent + TAB, classes, "classes:");
 	if (structures.size() > 0)			print_header(indent + TAB, structures, "structures:");
@@ -2150,7 +2109,7 @@ void CSharpParser::StructNode::print(int indent) const {
 	if (methods.size() > 0)				print_header(indent + TAB, methods, "methods:");
 	if (properties.size() > 0)			print_header(indent + TAB, properties, "properties:");
 	if (variables.size() > 0)			print_header(indent + TAB, variables, "variables:");
-	*/
+	
 	// NODES:
 	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
 	if (classes.size() > 0)		for (ClassNode* x : classes)		x->print(indent + TAB);

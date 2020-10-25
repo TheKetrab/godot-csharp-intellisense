@@ -40,6 +40,7 @@ const int TAB = 2;
 
 class CSharpParser {
 
+public:
 	struct Node;
 	struct FileNode;
 	struct NamespaceNode;
@@ -81,7 +82,7 @@ class CSharpParser {
 		virtual void print(int indent) const = 0;
 
 		template <class T>
-		void print_header(int indent, vector<T*>& v, string title) const {
+		void print_header(int indent, const vector<T*>& v, string title) const {
 
 			indentation(indent);
 			cout << title << " ";
@@ -290,7 +291,6 @@ public:
 	// CLASS
 private:
 
-	FileNode* being_parsed;		// glowny wezel pliku
 	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
 	Node* cursor;				// wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
 
@@ -301,28 +301,24 @@ private:
 	vector<CSharpLexer::TokenData> tokens; // tokens of being parsed file
 	vector<string> attributes;
 
-	unordered_map<string, uint64_t> files_hash; // hashe plikow, czy sa aktualne dane
-	unordered_map<string, FileNode*> files; // dane o plikach przez nazwe
-	uint64_t compute_hash(string str);
-	static CSharpParser* _instance;
 	bool kw_value_allowed = false; // enable only when parse property->set
 
 
 public:
+	CSharpParser(string code);
 	~CSharpParser();
-	void parse(string &code, string &filename);
-	void parse(vector<CSharpLexer::TokenData> &tokens);
+	FileNode* parse();
 	void clear_state(); // set state to zero
 
 	void error(string msg) const;
 	void debug_info() const;
 
-	static CSharpParser* get_instance();
+	
 	static void indentation(int n);
 	static map<CSharpLexer::Token, Modifier> to_modifier;
 
 private:
-	CSharpParser(); // this is singleton
+	
 	void _unexpeced_token_error() const;
 
 	bool _is_actual_token(CSharpLexer::Token tk, bool assert = false);
@@ -385,6 +381,13 @@ public:
 				&& parenthesis_depth == d.parenthesis_depth;
 		}
 	} depth;
+
+
+
+	friend class CSharpContext;
 };
+
+
+
 
 #endif // CSHARP_PARSER_H
