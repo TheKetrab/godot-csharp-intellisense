@@ -78,6 +78,7 @@ void CSharpLexer::clear_state() {
 	possible_generic = false;
 	force_generic_close = false;
 
+	depth = 0;
 }
 
 CSharpLexer::Token CSharpLexer::_get_last_token() const {
@@ -286,6 +287,11 @@ void CSharpLexer::_tokenize() {
 
 					Token type = Token(CST::TK_EMPTY);
 					if (_read_special_char(type)) {
+
+						// DEPTH
+						if (type == CST::TK_CURLY_BRACKET_OPEN) depth++;
+						else if (type == CST::TK_CURLY_BRACKET_CLOSE) depth--;
+
 						_make_token(type);
 					}
 					else {
@@ -686,6 +692,7 @@ bool CSharpLexer::_read_special_char(Token& type) {
 
 void CSharpLexer::_make_token(const Token p_type, const string& data) {
 	TokenData td = { p_type, data, line, column };
+	td.depth = this->depth;
 	tokens.push_back(td);
 }
 

@@ -5,6 +5,7 @@
 #include <vector>
 #include <iostream>
 #include <string>
+#include <stack>
 
 using namespace std;
 
@@ -75,6 +76,7 @@ public:
 		string data;
 		int line;
 		int column;
+		int depth;
 	};
 
 	static const char* token_names[(int)Token::TK_MAX];
@@ -94,6 +96,8 @@ private:
 	bool possible_generic;
 	bool force_generic_close;    // each '>' is interpreted as TK(>), don't care about GETCHAR(1) 
 
+	int depth; // glebokosc w klamrach {} (dla funkcji 'wycofaj sie z bloku')
+	
 
 public:
 	CSharpLexer(string code);
