@@ -12,6 +12,7 @@
 
 // Node
 //    NamespaceNode
+//       FileNode
 //    EnumNode
 //    GenericNode (abstract)
 //       InterfaceNode
@@ -62,48 +63,64 @@ public:
 	struct TryNode;
 	struct UsingNode;
 
+	// co my chcemy uzyskac
+	enum CompletionType {
+		COMPLETION_NONE,            // niewiadomo co
+		COMPLETION_TYPE,            // przy deklarowaniu czegos np w klasie
+		COMPLETION_MEMBER,          // po kropce
+		COMPLETION_CALL_ARGUMENTS,  // w funkcji -> trzeba sprawdzic typ
+		COMPLETION_LABEL,           // po dwukropku w jump (goto: )
+		COMPLETION_VIRTUAL_FUNC,    // przy napisaniu override
+		COMPLETION_ASSIGN           // po '='
+	};
+
 	// abstract
 	struct Node {
+
+		enum class Type {
+			UNKNOWN, FILE, NAMESPACE, ENUM, INTERFACE, STRUCT, CLASS, METHOD, PROPERTY, VAR, STATEMENT, LAMBDA
+		};
 
 		int line = 0;
 		int column = 0;
 		int modifiers = 0;
 		vector<string> attributes;
 		string name;
+		Type node_type;
 
 		Node* parent = nullptr;
 
-		Node() {}
+		Node(Type t) : node_type(t) {}
 		Node(const CSharpLexer::TokenData td) {
 			this->line = td.line;
 			this->column = td.column;
 		}
 
-		virtual void print(int indent) const = 0;
+		virtual void print(int indent = 0) const = 0;
+		virtual vector<NamespaceNode*> get_namespaces();
+		virtual vector<ClassNode*> get_classes();
+		virtual vector<MethodNode*> get_methods();
+		virtual vector<VarNode*> get_vars(); // vars and properties
 
 		template <class T>
 		void print_header(int indent, const vector<T*>& v, string title) const {
 
 			indentation(indent);
-			cout << title << " ";
+			cout << title;
 			for (T* t : v)
-				cout << t->name << " ";
+				cout << " " << t->name;
 			cout << endl;
 		}
 
-	};
+		void print_header(int indent, const vector<string> &v, string title) const {
+			
+			indentation(indent);
+			cout << title;
+			for (string x : v)
+				cout << " " << x;
+			cout << endl;
+		}
 
-	struct FileNode : public Node {
-
-		vector<string> using_directives;
-		vector<string> using_static_direcvites;
-		vector<string> directives;
-		vector<string> labels;
-
-		vector<NamespaceNode*> namespaces;
-		vector<ClassNode*> classes;
-
-		void print(int indent) const override;
 	};
 
 	// w namespace'ie sa inne namespace'y i klasy
@@ -118,7 +135,20 @@ public:
 		vector<EnumNode*> enums;
 		vector<DelegateNode*> delegates;
 
-		void print(int indent) const override;
+		NamespaceNode() : Node(Type::NAMESPACE) {}
+		void print(int indent = 0) const override;
+	};
+
+	// filenode jest jak namespace global, tylko ze ma dodatkowe funkcjonalnosci (to co widac TYLKO w tym pliku)
+	struct FileNode : public NamespaceNode {
+
+		vector<string> using_directives;
+		vector<string> using_static_direcvites;
+		vector<string> directives;
+		vector<string> labels;
+
+		FileNode() : NamespaceNode() { node_type = Type::FILE; }
+		void print(int indent = 0) const override;
 	};
 
 	struct EnumNode : public Node {
@@ -126,7 +156,8 @@ public:
 		string type = "int"; // domyslnie int
 		vector<string> members;
 
-		void print(int indent) const override;
+		EnumNode() : Node(Type::ENUM) {}
+		void print(int indent = 0) const override;
 	};
 
 	// abstract
@@ -135,6 +166,7 @@ public:
 		bool is_generic = false;
 		vector<string> generic_declarations;
 		string constraints;
+		GenericNode(Type t) : Node(t) {}
 	};
 
 	struct InterfaceNode : public GenericNode {
@@ -143,7 +175,8 @@ public:
 		vector<MethodNode*> methods;
 		vector<PropertyNode*> properties;
 
-		void print(int indent) const override;
+		InterfaceNode() : GenericNode(Type::INTERFACE) {}
+		void print(int indent = 0) const override;
 	};
 
 	struct StructNode : public GenericNode {
@@ -158,12 +191,14 @@ public:
 		vector<PropertyNode*> properties;
 		vector<DelegateNode*> delegates;
 
-		void print(int indent) const override;
+		StructNode() : GenericNode(Type::STRUCT) {}
+		void print(int indent = 0) const override;
 	};
 
 	struct ClassNode : public StructNode {
 
-		void print(int indent) const override;
+		ClassNode() { node_type = Type::CLASS; }
+		void print(int indent = 0) const override;
 	};
 
 	struct MethodNode : public GenericNode {
@@ -172,7 +207,8 @@ public:
 		vector<VarNode*> arguments;
 		StatementNode* body = nullptr;
 
-		void print(int indent) const override;
+		MethodNode() : GenericNode(Type::METHOD) {}
+		void print(int indent = 0) const override;
 	};
 
 	struct DelegateNode : public GenericNode {
@@ -184,10 +220,12 @@ public:
 		string type;
 		string value;
 
-		void print(int indent) const override;
+		void print(int indent = 0) const override;
 
-		VarNode() = default;
-		VarNode(string name, string type) {
+		VarNode() : Node(Type::VAR) { }
+		VarNode(string name, string type) 
+			: Node(Type::VAR)
+		{
 			this->name = name;
 			this->type = type;
 		}
@@ -200,7 +238,8 @@ public:
 		StatementNode* get_statement = nullptr;
 		StatementNode* set_statement = nullptr;
 
-		void print(int indent) const override;
+		PropertyNode() { node_type = Type::PROPERTY; }
+		void print(int indent = 0) const override;
 	};
 
 	// ----- ----- ----- ----- -----
@@ -210,7 +249,9 @@ public:
 		// TODO parse label statement: identifier ":" statement (dla goto, etykiety)
 		string raw;
 		StatementNode* prev = nullptr; // polaczone w liste, zeby mozna bylo przejsc do tylu i poszukac deklaracji
-		void print(int indent) const override;
+
+		StatementNode() : Node(Type::STATEMENT) {}
+		void print(int indent = 0) const override;
 	};
 
 	struct ExpressionNode : public StatementNode {
@@ -288,8 +329,14 @@ public:
 
 
 	// ----- ----- -----
-	// CLASS
+	// CLASS MEMBERS
 private:
+
+	// where is the parser now
+	NamespaceNode* cur_namespace;
+	ClassNode* cur_class;
+	MethodNode* cur_method;
+	BlockNode* cur_block;
 
 	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
 	Node* cursor;				// wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
@@ -303,7 +350,16 @@ private:
 
 	bool kw_value_allowed = false; // enable only when parse property->set
 
+	// completion info
+	CompletionType completion_type;
+	NamespaceNode *completion_namespace;
+	ClassNode *completion_class;
+	MethodNode *completion_method;
+	BlockNode *completion_block;
 
+
+	// ----- ----- -----
+	// CLASS METHODS
 public:
 	CSharpParser(string code);
 	~CSharpParser();

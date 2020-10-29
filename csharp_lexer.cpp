@@ -695,7 +695,6 @@ void CSharpLexer::_make_identifier(const string& identifier) {
 
 bool CSharpLexer::_is_keyword(const string& word, Token& type) const {
 
-	// TODO zrobic drzewo Trie, do szybszego sprawdzania
 	for (int i = (int)RESERVED_KEYWORDS_BEGIN; i <= (int)RESERVED_KEYWORDS_END; i++)
 		if (word == token_names[i]) {
 			type = Token(i);
@@ -713,8 +712,15 @@ bool CSharpLexer::_is_keyword(const string& word, Token& type) const {
 	return false;
 }
 
+bool CSharpLexer::is_context_keyword(const Token& type) {
+	
+	return (int)type >= (int)CSharpLexer::CONTEXT_KEYWORDS_BEGIN
+		&& (int)type <= (int)CSharpLexer::CONTEXT_KEYWORDS_END;
+}
+
 bool CSharpLexer::is_operator(Token& type) {
-	return (int)type >= (int)CSharpLexer::OPS_BEGIN && (int)type <= (int)CSharpLexer::OPS_END;
+	return (int)type >= (int)CSharpLexer::OPS_BEGIN
+		&& (int)type <= (int)CSharpLexer::OPS_END;
 }
 
 bool CSharpLexer::is_assignment_operator(Token& type) {

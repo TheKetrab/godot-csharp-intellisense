@@ -8,13 +8,21 @@ using namespace std;
 #define GETTOKEN(ofs) ((ofs + pos) >= len ? CST::TK_ERROR : tokens[ofs + pos].type)
 #define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
 #define INCPOS(ammount) { pos += ammount; }
+
 #define CASEATYPICAL(def_return) \
 	case CST::TK_EOF: { return def_return; } \
 	case CST::TK_ERROR: { error("Found error token."); return def_return; } \
 	case CST::TK_EMPTY: { error("Empty token -> skipped."); INCPOS(1); break; } \
-	case CST::TK_CURSOR: { cursor = current; INCPOS(1); }
+	case CST::TK_CURSOR: { \
+		cursor = current; \
+		completion_namespace = cur_namespace; \
+		completion_class = cur_class; \
+		completion_method = cur_method; \
+		completion_block = cur_block; \
+		INCPOS(1); break; }
 
-#define CASEBASETYPE case CST::TK_KW_BOOL: \
+#define CASEBASETYPE \
+		case CST::TK_KW_BOOL: \
 		case CST::TK_KW_BYTE: \
 		case CST::TK_KW_CHAR: \
 		case CST::TK_KW_DECIMAL: \
@@ -33,7 +41,8 @@ using namespace std;
 		case CST::TK_KW_VAR: \
 		case CST::TK_KW_VOID:
 
-#define CASEMODIFIER case CST::TK_KW_PUBLIC: \
+#define CASEMODIFIER \
+		case CST::TK_KW_PUBLIC: \
 		case CST::TK_KW_PROTECTED: \
 		case CST::TK_KW_PRIVATE: \
 		case CST::TK_KW_INTERNAL: \
@@ -111,10 +120,14 @@ CSharpParser::CSharpParser(string code) {
 
 void CSharpParser::clear_state() {
 
+	cur_namespace    = nullptr;
+	cur_class        = nullptr;
+	cur_method       = nullptr;
+	cur_block        = nullptr;
 	current          = nullptr;
 	cursor           = nullptr;
 	pos              = 0;      
-	len              = 0;      
+	
 	modifiers        = 0;
 	kw_value_allowed = false;
 }
@@ -158,7 +171,7 @@ bool CSharpParser::_assert(CSharpLexer::Token tk) {
 
 bool CSharpParser::_is_actual_token(CSharpLexer::Token tk, bool assert) {
 
-	CSharpLexer::Token token = tokens[pos].type;
+	CSharpLexer::Token token = GETTOKEN(0);
 
 	switch (token) {
 
@@ -170,10 +183,10 @@ bool CSharpParser::_is_actual_token(CSharpLexer::Token tk, bool assert) {
 
 		if (token != tk) {
 			if (assert) {
-				string msg = "Assertion fail. Expected tk: ";
+				string msg = "Assertion fail. Expected token: ";
 				msg += CSharpLexer::token_names[(int)tk];
 				msg += " but current token is: ";
-				msg += CSharpLexer::token_names[(int)token];
+				msg += (token == CST::TK_IDENTIFIER) ? TOKENDATA(0) : CSharpLexer::token_names[(int)token];
 				error(msg);
 			}
 			return false;
@@ -240,22 +253,35 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 	string name = "global";
 	if (!global) {
 		// is namespace?
-		if (_is_actual_token(CST::TK_KW_NAMESPACE))
+		if (!_is_actual_token(CST::TK_KW_NAMESPACE))
 			return nullptr;
 		else INCPOS(1);
 
 		// read name
-		if (_is_actual_token(CST::TK_IDENTIFIER))
+		if (!_is_actual_token(CST::TK_IDENTIFIER))
 			return nullptr;
 		else {
-			name = TOKENDATA(0);
-			INCPOS(1);
+			name = "";
+			while (true) {
+				_assert(CST::TK_IDENTIFIER);
+				name += TOKENDATA(0);
+				INCPOS(1); // skip name
+				if (_is_actual_token(CST::TK_PERIOD)) {
+					name += ".";
+					INCPOS(1);
+				}
+				else {
+					break;
+				}
+			}
 		}
 	}
 
 	NamespaceNode* node = new NamespaceNode();
 	Node* prev_current = current;
+	NamespaceNode* prev_namespace = cur_namespace;
 	this->current = node;
+	this->cur_namespace = node;
 	node->name = name;
 
 	_assert(CST::TK_CURLY_BRACKET_OPEN);
@@ -265,12 +291,29 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 	while (_parse_namespace_member(node));
 
 	this->current = prev_current;
+	this->cur_namespace = prev_namespace;
 	return node;
 
 }
 
 void CSharpParser::FileNode::print(int indent) const {
-	// todo
+
+	indentation(indent);
+	cout << "FILE " << name << ":" << endl;
+
+	// HEADERS:
+	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "> namespaces:");
+	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)    print_header(indent + TAB, classes,    "> classes:");
+	if (structures.size() > 0) print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)      print_header(indent + TAB, enums,      "> enums:");
+
+	// NODES:
+	if (namespaces.size() > 0) for (NamespaceNode* x : namespaces) x->print(indent + TAB);
+	if (interfaces.size() > 0) for (InterfaceNode* x : interfaces) x->print(indent + TAB);
+	if (classes.size() > 0)    for (ClassNode* x : classes)        x->print(indent + TAB);
+	if (structures.size() > 0) for (StructNode* x : structures)    x->print(indent + TAB);
+
 }
 
 CSharpParser::FileNode * CSharpParser::_parse_file()
@@ -280,43 +323,7 @@ CSharpParser::FileNode * CSharpParser::_parse_file()
 
 	while (_parse_using_directive(node));
 
-
-	while (GETTOKEN(0) != CST::TK_EOF) {
-
-		switch (GETTOKEN(0)) {
-
-		CASEATYPICAL(node)
-
-		case CST::TK_KW_NAMESPACE: {
-			NamespaceNode* member = _parse_namespace();
-			if (member != nullptr) {
-				node->namespaces.push_back(member);
-				member->parent = node;
-			}
-			break;
-		}
-		case CST::TK_KW_CLASS: {
-			ClassNode* member = _parse_class();
-			if (member != nullptr) {
-				node->classes.push_back(member);
-				member->parent = node;
-			}
-			break;
-		}
-
-		}
-
-	}
-	switch (GETTOKEN(0)) {
-
-
-	case CST::TK_KW_NAMESPACE: {
-
-	}
-	}
-	
-	// todo parse using directives
-	// todo parse namespace or class 
+	while (_parse_namespace_member(node));
 
 	this->current = nullptr;
 	return node;
@@ -456,7 +463,9 @@ CSharpParser::ClassNode* CSharpParser::_parse_class() {
 
 	ClassNode* node = new ClassNode();
 	Node* prev_current = current;
+	ClassNode* prev_class = cur_class;
 	this->current = node;
+	this->cur_class = node;
 	node->name = TOKENDATA(0);
 	INCPOS(1);
 
@@ -485,6 +494,7 @@ CSharpParser::ClassNode* CSharpParser::_parse_class() {
 	while (_parse_class_member(node));
 
 	this->current = prev_current;
+	this->cur_class = prev_class;
 	return node;
 }
 
@@ -499,6 +509,12 @@ string CSharpParser::_parse_initialization_block() {
 		switch (GETTOKEN(0)) {
 
 		CASEATYPICAL(initialization_block)
+
+		CASELITERAL {
+			initialization_block += TOKENDATA(0);
+			INCPOS(1);
+			break;
+		}
 
 		case CST::TK_IDENTIFIER: {
 			initialization_block += TOKENDATA(0);
@@ -558,6 +574,7 @@ string CSharpParser::_parse_new() {
 	}
 	case CST::TK_CURLY_BRACKET_CLOSE: {
 		// todo
+		break;
 	}
 
 	CASEBASETYPE {
@@ -580,7 +597,7 @@ string CSharpParser::_parse_new() {
 			string invocation = _parse_method_invocation();
 			res += invocation;
 		}
-		return res;
+		break;
 	}
 
 	default: {
@@ -588,6 +605,8 @@ string CSharpParser::_parse_new() {
 		INCPOS(1);
 	}
 	}
+
+	return res;
 }
 
 // parse expression -> (or assignment: x &= 10 is good as well)
@@ -605,6 +624,12 @@ string CSharpParser::_parse_expression() {
 		switch (GETTOKEN(0)) {
 
 		CASEATYPICAL("")
+
+		CASEBASETYPE {
+			string type = _parse_type();
+			res += type;
+			break;
+		}
 
 		case CST::TK_KW_AWAIT: {
 			INCPOS(1); // ignore
@@ -664,8 +689,39 @@ string CSharpParser::_parse_expression() {
 			break;
 		}
 
+		case CST::TK_OP_LAMBDA: {
+			// TODO to jest bardzo slabe rozwiazanie
+			res += " => ";
+			INCPOS(1);
+			StatementNode* s = _parse_statement();
+			res += s->raw;
+			delete s;
+			break;
+		}
+
 		CASELITERAL { res += TOKENDATA(0); INCPOS(1); break; }
-		case CST::TK_IDENTIFIER: { res += TOKENDATA(0); INCPOS(1); break; }
+		case CST::TK_IDENTIFIER: { 
+			
+			// maybe it is a type (MyOwnType)
+			// or array access (MyIdentifier[expression])
+			int cur_pos = pos;
+			string type = _parse_type(true);
+
+			if (type == "") {
+				// this is not a type, neither access to array
+				// it can be eg method invocation -> add to res and decide in next iteration
+				pos = cur_pos;
+				res += TOKENDATA(0);
+				INCPOS(1);
+				break;
+			}
+			else {
+
+				res += type;
+				break;
+
+			}
+		}
 		case CST::TK_PERIOD: { res += "."; INCPOS(1); break; }
 		case CST::TK_BRACKET_OPEN: { bracket_depth++; INCPOS(1); res += "[" + _parse_expression(); break; }
 
@@ -698,6 +754,13 @@ string CSharpParser::_parse_expression() {
 				break;
 			}
 
+			else if (CSharpLexer::is_context_keyword(t)) {
+
+				res += CSharpLexer::token_names[(int)t];
+				INCPOS(1);
+				break;
+			}
+
 			else {
 				_unexpeced_token_error();
 				INCPOS(1);
@@ -708,6 +771,8 @@ string CSharpParser::_parse_expression() {
 		}
 
 	}
+
+	return res;
 	
 }
 
@@ -951,11 +1016,12 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 				break;
 			}
 			else {
-				// TODO error
+				return ""; // error
 			}
 		}
 
 		case CST::TK_OP_LESS: { // <
+
 			generic_types_mode = true;
 			res += "<";
 			INCPOS(1);
@@ -964,6 +1030,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 		}
 
 		case CST::TK_OP_GREATER: { // >
+
 			generic_types_mode = false;
 			res += ">";
 			INCPOS(1);
@@ -980,6 +1047,10 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			array_mode = true;
 			res += "[";
 			INCPOS(1);
+			if (array_constructor) {
+				string expr = _parse_expression();
+				res += expr;
+			}
 			break;
 		}
 		case CST::TK_BRACKET_CLOSE: { // ]
@@ -1002,7 +1073,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 				INCPOS(1);
 			}
 			else {
-				// TODO error
+				return ""; // error
 			}
 			break;
 		}
@@ -1011,6 +1082,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 		CASEBASETYPE {
 
 			if (complex_type) {
+				return "";
 				// TODO error -> System.Reflexion.int ??????
 				// vector<int> still allowed, cause int will be parsed recursively
 			}
@@ -1032,7 +1104,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 		case CST::TK_IDENTIFIER: {
 
 			if (base_type) {
-				// TODO error
+				return ""; // error
 			}
 
 			complex_type = true;
@@ -1046,10 +1118,10 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 				break;
 			}
 			else if (_is_actual_token(CST::TK_OP_LESS)) {
-				break;
+				break; // don't skip!
 			}
 			else if (_is_actual_token(CST::TK_BRACKET_OPEN)) {
-				break;
+				break; // don't skip!
 			}
 			else { // none of '.', '<', '['
 				return res;
@@ -1057,6 +1129,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			break;
 		}
 		default: {
+
 			_unexpeced_token_error();
 			INCPOS(1);
 		}
@@ -1075,7 +1148,9 @@ bool CSharpParser::_parse_using_directive(FileNode* node) {
 	// using X = Y;
 
 	// is using?
-	_assert(CST::TK_KW_USING);
+	if (!_is_actual_token(CST::TK_KW_USING))
+		return false; // no longer using
+		
 	INCPOS(1); // skip 'using'
 
 	bool is_static = false;
@@ -1171,6 +1246,7 @@ bool CSharpParser::_parse_namespace_member(NamespaceNode* node) {
 	case CST::TK_CURLY_BRACKET_CLOSE: {
 
 		// TODO if depth ok - ok else error
+		INCPOS(1); // skip '}'
 		return false;
 	}
 
@@ -1186,7 +1262,9 @@ bool CSharpParser::_parse_namespace_member(NamespaceNode* node) {
 }
 
 void CSharpParser::debug_info() const {
-
+	if (pos == 1286) {
+		int x = 1;
+	}
 	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
 }
 
@@ -1249,6 +1327,24 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 		// field (var), property or method
 		string type = _parse_type();
 
+		// constructor?
+		if (_is_actual_token(CST::TK_PARENTHESIS_OPEN)) {
+
+			if (type != node->name) {
+				_unexpeced_token_error();
+				INCPOS(1);
+				break;
+			}
+
+			MethodNode* member = _parse_method_declaration(type, type);
+			if (member != nullptr) {
+				node->methods.push_back(member);
+				member->parent = node;
+			}
+			break;
+		}
+
+		// if not constructor here MUST be identifier
 		_assert(CST::TK_IDENTIFIER);
 		string name = TOKENDATA(0);
 		INCPOS(1);
@@ -1379,29 +1475,17 @@ void CSharpParser::NamespaceNode::print(int indent) const {
 	cout << "NAMESPACE " << name << ":" << endl;
 
 	// HEADERS:
-	
-	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "namespaces:");
-	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "interfaces:");
-	if (classes.size() > 0) print_header(indent + TAB, classes, "classes:");
-	if (structures.size() > 0) print_header(indent + TAB, structures, "structures:");
-	if (enums.size() > 0) print_header(indent + TAB, enums, "enums:");
+	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "> namespaces:");
+	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)    print_header(indent + TAB, classes,    "> classes:");
+	if (structures.size() > 0) print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)      print_header(indent + TAB, enums,      "> enums:");
 	
 	// NODES:
-
-	if (namespaces.size() > 0)
-		for (NamespaceNode* x : namespaces)
-			x->print(indent + TAB);
-	if (interfaces.size() > 0)
-		for (InterfaceNode* x : interfaces)
-			x->print(indent + TAB);
-	if (classes.size() > 0)
-		for (ClassNode* x : classes)
-			x->print(indent + TAB);
-	if (structures.size() > 0)
-		for (StructNode* x : structures)
-			x->print(indent + TAB);
-
-
+	if (namespaces.size() > 0) for (NamespaceNode* x : namespaces) x->print(indent + TAB);
+	if (interfaces.size() > 0) for (InterfaceNode* x : interfaces) x->print(indent + TAB);
+	if (classes.size() > 0)    for (ClassNode* x : classes)        x->print(indent + TAB);
+	if (structures.size() > 0) for (StructNode* x : structures)    x->print(indent + TAB);
 }
 
 CSharpParser::VarNode* CSharpParser::_parse_declaration() {
@@ -1498,6 +1582,8 @@ CSharpParser::UsingNode* CSharpParser::_parse_using_statement() {
 	_assert(CST::TK_KW_USING);
 
 	// using ( declaration or expression ) statement
+	// using declaration // TODO to jeszcze nie dziala (C#8)
+
 	UsingNode* node = new UsingNode();
 	Node* prev_current = current;
 	this->current = node;
@@ -1506,6 +1592,24 @@ CSharpParser::UsingNode* CSharpParser::_parse_using_statement() {
 	node->raw = "using ";
 
 
+	// USING DECLARATION VERSION
+	if (!_is_actual_token(CST::TK_PARENTHESIS_OPEN)) {
+
+		// TODO to nie dziala
+
+		VarNode* variable = _parse_declaration();
+		if (variable == nullptr) {
+			return nullptr; // error
+		}
+
+		_assert(CST::TK_SEMICOLON);
+		INCPOS(1); // skip ';'
+		return node;
+
+	}
+
+
+	// NORMAL VERSION
 	_assert(CST::TK_PARENTHESIS_OPEN);
 	INCPOS(1); // skip '('
 	node->raw += "(";
@@ -1881,17 +1985,27 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 
 	// OTHER
 	case CST::TK_KW_AWAIT: {
-		// todo
-	}
-	case CST::TK_KW_FIXED: {
-		// todo
-	}
-	case CST::TK_KW_LOCK: {
-		// todo
-	}
-	case CST::TK_KW_THIS:
-	case CST::TK_KW_BASE: {
+		StatementNode* node = new StatementNode();
+		node->raw += "await ";
+		string expr = _parse_expression();
+		node->raw += expr;
+		_assert(CST::TK_SEMICOLON);
 		INCPOS(1);
+		node->raw += ";";
+		return node;
+	}
+	case CST::TK_KW_THIS: {
+		// TODO
+	}
+
+	case CST::TK_KW_BASE: {
+		// TODO
+	}
+
+	case CST::TK_KW_FIXED:
+	case CST::TK_KW_LOCK: {
+		INCPOS(1);
+		break;
 	}
 	case CST::TK_SEMICOLON: {
 		StatementNode* node = new StatementNode();
@@ -1913,7 +2027,9 @@ CSharpParser::MethodNode* CSharpParser::_parse_method_declaration(string name, s
 
 	MethodNode* node = new MethodNode();
 	Node* prev_current = current;
+	MethodNode* prev_method = cur_method;
 	this->current = node;
+	this->cur_method = node;
 
 	node->name = name;
 	node->return_type = return_type;
@@ -1997,6 +2113,7 @@ CSharpParser::MethodNode* CSharpParser::_parse_method_declaration(string name, s
 	}
 
 	this->current = prev_current;
+	this->cur_method = prev_method;
 	return node;
 }
 
@@ -2034,11 +2151,17 @@ CSharpParser::BlockNode* CSharpParser::_parse_block() {
 
 	BlockNode* node = new BlockNode();
 	Node* prev_current = current;
+	BlockNode* prev_block = cur_block;
 	this->current = node;
+	this->cur_block = node;
 
 	while (!_is_actual_token(CST::TK_CURLY_BRACKET_CLOSE)) {
 
 		StatementNode* statement = _parse_statement();
+		if (statement == nullptr) {
+			error("Failed to parse statement.");
+			break;
+		}
 		statement->parent = node;
 
 		// dodaj na koniec listy statementow
@@ -2049,6 +2172,7 @@ CSharpParser::BlockNode* CSharpParser::_parse_block() {
 	INCPOS(1); // skip '}'
 
 	this->current = prev_current;
+	this->cur_block = prev_block;
 	return node;
 
 }
@@ -2065,21 +2189,14 @@ void CSharpParser::ClassNode::print(int indent) const {
 	cout << "CLASS " << name << ":" << endl;
 
 	// HEADERS:
-	if (base_types.size() > 0) {
-		indentation(indent + TAB);
-		cout << "base types:";
-		for (string x : base_types)
-			cout << " " << x;
-		cout << endl;
-	}
-	
-	if (interfaces.size() > 0)			print_header(indent + TAB, interfaces, "interfaces:");
-	if (classes.size() > 0)				print_header(indent + TAB, classes, "classes:");
-	if (structures.size() > 0)			print_header(indent + TAB, structures, "structures:");
-	if (enums.size() > 0)				print_header(indent + TAB, enums, "enums:");
-	if (methods.size() > 0)				print_header(indent + TAB, methods, "methods:");
-	if (properties.size() > 0)			print_header(indent + TAB, properties, "properties:");
-	if (variables.size() > 0)			print_header(indent + TAB, variables, "variables:");
+	if (base_types.size() > 0)  print_header(indent + TAB, base_types, "> base types:");
+	if (interfaces.size() > 0)	print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)		print_header(indent + TAB, classes,    "> classes:");
+	if (structures.size() > 0)	print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)		print_header(indent + TAB, enums,      "> enums:");
+	if (methods.size() > 0)		print_header(indent + TAB, methods,    "> methods:");
+	if (properties.size() > 0)	print_header(indent + TAB, properties, "> properties:");
+	if (variables.size() > 0)	print_header(indent + TAB, variables,  "> variables:");
 	
 	// NODES:
 	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
@@ -2093,22 +2210,14 @@ void CSharpParser::StructNode::print(int indent) const {
 	cout << "STRUCT " << name << ":" << endl;
 
 	// HEADERS:
-	if (base_types.size() > 0) {
-		indentation(indent + TAB);
-		cout << "base types:";
-		for (string x : base_types)
-			cout << " " << x;
-		cout << endl;
-	}
-
-
-	if (interfaces.size() > 0)			print_header(indent + TAB, interfaces, "interfaces:");
-	if (classes.size() > 0)				print_header(indent + TAB, classes, "classes:");
-	if (structures.size() > 0)			print_header(indent + TAB, structures, "structures:");
-	if (enums.size() > 0)				print_header(indent + TAB, enums, "enums:");
-	if (methods.size() > 0)				print_header(indent + TAB, methods, "methods:");
-	if (properties.size() > 0)			print_header(indent + TAB, properties, "properties:");
-	if (variables.size() > 0)			print_header(indent + TAB, variables, "variables:");
+	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
+	if (interfaces.size() > 0)	   print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)		   print_header(indent + TAB, classes,    "> classes:");
+	if (structures.size() > 0)	   print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)		   print_header(indent + TAB, enums,      "> enums:");
+	if (methods.size() > 0)		   print_header(indent + TAB, methods,    "> methods:");
+	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
+	if (variables.size() > 0)	   print_header(indent + TAB, variables,  "> variables:");
 	
 	// NODES:
 	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
@@ -2148,8 +2257,12 @@ void CSharpParser::InterfaceNode::print(int indent) const {
 
 	indentation(indent);
 	cout << "INTERFACE " << name << endl;
-	// TODO members
 
+	// HEADERS:
+	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
+	if (methods.size() > 0)		   print_header(indent + TAB, methods,    "> methods:");
+	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
+	
 }
 
 void CSharpParser::EnumNode::print(int indent) const {
@@ -2157,13 +2270,30 @@ void CSharpParser::EnumNode::print(int indent) const {
 	indentation(indent); cout << "ENUM " << name << ":" << endl;
 	indentation(indent + 2); cout << "type: " << type << endl;
 
-	indentation(indent + 2); cout << "members: ";
-	for (string member : members)
-		cout << member << " ";
-	cout << endl;
+	if (members.size() > 0)     print_header(indent + TAB, members, "> members:");
 
 }
 
 void CSharpParser::PropertyNode::print(int indent) const {
 	// TODO
+}
+
+vector<CSharpParser::NamespaceNode*> CSharpParser::Node::get_namespaces()
+{
+	return vector<NamespaceNode*>();
+}
+
+vector<CSharpParser::ClassNode*> CSharpParser::Node::get_classes()
+{
+	return vector<ClassNode*>();
+}
+
+vector<CSharpParser::MethodNode*> CSharpParser::Node::get_methods()
+{
+	return vector<MethodNode*>();
+}
+
+vector<CSharpParser::VarNode*> CSharpParser::Node::get_vars()
+{
+	return vector<VarNode*>();
 }

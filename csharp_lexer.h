@@ -111,6 +111,7 @@ public:
 	static bool is_whitespace(char c);    // space, tab, newline
 	static bool is_operator(Token& type);
 	static bool is_assignment_operator(Token& type);
+	static bool is_context_keyword(const Token& type);
 
 private:
 	void _tokenize();
@@ -139,7 +140,7 @@ private:
 	static const Token CONTEXT_KEYWORDS_END = Token::TK_KW_YIELD;
 	static const Token OPS_BEGIN = Token::TK_OP_ADD;
 	static const Token OPS_END = Token::TK_OP_ASSIGN_RIGHT_SHIFT;
-
+	
 };
 
 

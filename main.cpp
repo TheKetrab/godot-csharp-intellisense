@@ -10,7 +10,7 @@
 using namespace std;
 int main() {
 
-	string filename = "script.cs";
+	string filename = "script5.cs";
 
 	ifstream file;
 	file.open(filename);
@@ -45,6 +45,9 @@ int main() {
 
 	// PARSING
 	CSharpContext::instance()->update_state(str, filename);
+
+	// PRINT
+	CSharpContext::instance()->print();
 
 	cout << endl << endl << endl;
 	return 0;
