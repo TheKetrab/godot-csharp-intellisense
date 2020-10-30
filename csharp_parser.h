@@ -64,7 +64,7 @@ public:
 	struct UsingNode;
 
 	// co my chcemy uzyskac
-	enum CompletionType {
+	enum class CompletionType {
 		COMPLETION_NONE,            // niewiadomo co
 		COMPLETION_TYPE,            // przy deklarowaniu czegos np w klasie
 		COMPLETION_MEMBER,          // po kropce

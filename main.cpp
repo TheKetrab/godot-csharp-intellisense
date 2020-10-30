@@ -10,7 +10,7 @@
 using namespace std;
 int main() {
 
-	string filename = "script5.cs";
+	string filename = "script4.cs";
 
 	ifstream file;
 	file.open(filename);

@@ -130,6 +130,12 @@ void CSharpParser::clear_state() {
 	
 	modifiers        = 0;
 	kw_value_allowed = false;
+
+	completion_type      = CompletionType::COMPLETION_NONE;
+	completion_namespace = nullptr;
+	completion_class     = nullptr;
+	completion_method    = nullptr;
+	completion_block     = nullptr;
 }
 
 
@@ -662,6 +668,12 @@ string CSharpParser::_parse_expression() {
 			break;
 		}
 
+		case CST::TK_COLON: {
+			INCPOS(1); // ignore (TODO zmienic na ogarnianie operatora ? : )
+			res += ":";
+			break;
+		}
+
 		// end if
 		case CST::TK_COMMA: {
 			if (parenthesis_depth == 0 && bracket_depth == 0) return res; 
@@ -693,9 +705,8 @@ string CSharpParser::_parse_expression() {
 			// TODO to jest bardzo slabe rozwiazanie
 			res += " => ";
 			INCPOS(1);
-			StatementNode* s = _parse_statement();
-			res += s->raw;
-			delete s;
+			string s = _parse_expression();
+			res += s;
 			break;
 		}
 
@@ -734,7 +745,15 @@ string CSharpParser::_parse_expression() {
 			else {
 				// todo error
 			}
+			break;
 		}
+		case CST::TK_CURLY_BRACKET_OPEN: {
+			BlockNode* node = _parse_block();
+			res += "{ ... }";
+			break;
+		}
+
+
 		default: {
 
 			CSharpLexer::Token t = GETTOKEN(0);
@@ -949,8 +968,14 @@ CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 			node->local_variable = variable;
 		}
 
+		_assert(CST::TK_KW_IN);
+		INCPOS(1); // skip 'in'
+
+
 		// in
-		_skip_until_token(CST::TK_PARENTHESIS_CLOSE);
+		_parse_expression();
+
+		_assert(CST::TK_PARENTHESIS_CLOSE);
 		INCPOS(1); // skip ')'
 	}
 
@@ -1262,7 +1287,7 @@ bool CSharpParser::_parse_namespace_member(NamespaceNode* node) {
 }
 
 void CSharpParser::debug_info() const {
-	if (pos == 1286) {
+	if (pos == 1549) {
 		int x = 1;
 	}
 	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
@@ -1903,6 +1928,20 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 
 		return node;
 	}
+
+	case CST::TK_KW_THIS:
+	case CST::TK_KW_BASE: {
+
+		StatementNode* node = new StatementNode();
+		string expr = _parse_expression();
+		_assert(CST::TK_SEMICOLON);
+		INCPOS(1); // skip ';'
+		node->raw = expr + ";";
+		return node;
+
+	}
+
+
 	case CST::TK_IDENTIFIER: {
 		
 		// It can be:
@@ -1994,13 +2033,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 		node->raw += ";";
 		return node;
 	}
-	case CST::TK_KW_THIS: {
-		// TODO
-	}
-
-	case CST::TK_KW_BASE: {
-		// TODO
-	}
+	
 
 	case CST::TK_KW_FIXED:
 	case CST::TK_KW_LOCK: {
