@@ -6,20 +6,27 @@ using CSM = CSharpParser::Modifier;
 using namespace std;
 
 #define GETTOKEN(ofs) ((ofs + pos) >= len ? CST::TK_ERROR : tokens[ofs + pos].type)
+#define TOKENINFO(ofs) ((ofs + pos) >= len ? CSharpLexer::TokenData() : tokens[ofs + pos])
 #define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
 #define INCPOS(ammount) { pos += ammount; }
 
-#define CASEATYPICAL(def_return) \
-	case CST::TK_EOF: { return def_return; } \
-	case CST::TK_ERROR: { error("Found error token."); return def_return; } \
-	case CST::TK_EMPTY: { error("Empty token -> skipped."); INCPOS(1); break; } \
-	case CST::TK_CURSOR: { \
-		cursor = current; \
-		completion_namespace = cur_namespace; \
-		completion_class = cur_class; \
-		completion_method = cur_method; \
-		completion_block = cur_block; \
-		INCPOS(1); break; }
+void CSharpParser::_found_cursor() {
+	cursor = current;
+	completion_expression = cur_expression;
+	cursor_column = TOKENINFO(0).column;
+	cursor_line = TOKENINFO(0).line;
+	completion_type = _deduce_completion_type();
+	completion_namespace = cur_namespace;
+	completion_class = cur_class;
+	completion_method = cur_method;
+	completion_block = cur_block;
+}
+
+#define CASEATYPICAL \
+	case CST::TK_EOF:    error("EOF found"); \
+	case CST::TK_ERROR:  error("Found error token."); \
+	case CST::TK_EMPTY:  error("Empty token error."); \
+	case CST::TK_CURSOR: _found_cursor(); INCPOS(1); break;
 
 #define CASEBASETYPE \
 		case CST::TK_KW_BOOL: \
@@ -114,6 +121,7 @@ CSharpParser::CSharpParser(string code) {
 
 	this->tokens = lexer.get_tokens();
 	this->len = this->tokens.size();
+	this->identifiers = lexer.get_identifiers();
 
 }
 
@@ -159,7 +167,8 @@ void CSharpParser::_parse_modifiers() {
 }
 
 void CSharpParser::error(string msg) const {
-	cout << "--> Error: " << msg << endl;
+	cout << "--> " << ((cursor == nullptr) ? "" : "(cursor found) ") << "Error: " << msg << endl;
+	throw CSharpParserException(msg);
 }
 
 void CSharpParser::_unexpeced_token_error() const {
@@ -171,8 +180,10 @@ void CSharpParser::_unexpeced_token_error() const {
 // upewnia sie czy aktualny token jest taki jak trzeba
 // jesli current to CURSOR to ustawia cursor i sprawdza
 // czy nastepny token jest wymaganym przez assercje tokenem
-bool CSharpParser::_assert(CSharpLexer::Token tk) {
-	return _is_actual_token(tk, true);
+// jesli asercja jest falszywa, to ucieka
+void CSharpParser::_assert(CSharpLexer::Token tk) {
+
+	_is_actual_token(tk, true);
 }
 
 bool CSharpParser::_is_actual_token(CSharpLexer::Token tk, bool assert) {
@@ -181,10 +192,10 @@ bool CSharpParser::_is_actual_token(CSharpLexer::Token tk, bool assert) {
 
 	switch (token) {
 
-	case CST::TK_EOF: return false;
-	case CST::TK_ERROR: error("Found error token."); return false;
-	case CST::TK_EMPTY: error("Empty token -> skipped."); INCPOS(1); return _is_actual_token(tk,assert);
-	case CST::TK_CURSOR: cursor = current; INCPOS(1); return _is_actual_token(tk,assert);
+	case CST::TK_EOF:    error("EOF found");
+	case CST::TK_ERROR:  error("Found error token.");
+	case CST::TK_EMPTY:  error("Empty token error.");
+	case CST::TK_CURSOR: _found_cursor(); INCPOS(1); return _is_actual_token(tk, assert);
 	default: {
 
 		if (token != tk) {
@@ -211,18 +222,18 @@ void CSharpParser::_parse_attributes() {
 
 		switch (GETTOKEN(0)) {
 
-		CASEATYPICAL()
+		CASEATYPICAL
 
 		case CST::TK_BRACKET_OPEN: {
 
-			if (bracket_depth == 0) {
-				attribute = "[ ";
-			}
+				if (bracket_depth == 0) {
+					attribute = "[ ";
+				}
 
-			bracket_depth++;
-			INCPOS(1);
-			break;
-		}
+				bracket_depth++;
+				INCPOS(1);
+				break;
+			}
 		case CST::TK_BRACKET_CLOSE: {
 			bracket_depth--;
 			INCPOS(1);
@@ -248,6 +259,134 @@ void CSharpParser::_apply_attributes(CSharpParser::Node* node) {
 	node->attributes = this->attributes; // copy
 }
 
+// it deduces owner class node
+// example: Class1.DoSth -> Class1
+// example: SomeIdentifier.DoSth -> _deduce_type of SomeIdentifier
+// example: Method1().DoSth -> _deduce_type of Method1
+// example: DoSth -> current_class
+string CSharpParser::_deduce_owner_type(int from_pos) {
+
+	// foo1.x(a,s,d()).
+
+
+	return "";
+}
+
+CSharpParser::CompletionType CSharpParser::_deduce_completion_type() {
+
+	CompletionType res = CompletionType::COMPLETION_NONE;
+
+	switch (GETTOKEN(-1)) {
+
+		// member of class or object
+	case CST::TK_PERIOD:
+	case CST::TK_OP_ARROW_FORWARD:
+	{
+		res = CompletionType::COMPLETION_MEMBER;
+		break;
+	}
+
+	// function arguments
+	case CST::TK_PARENTHESIS_OPEN:
+	case CST::TK_COMMA:
+	{
+		// completion_info_str => function name
+		// completion_info_int => current argument number
+
+		res = CompletionType::COMPLETION_CALL_ARGUMENTS;
+
+		int parenthesis = 0;
+		int cur_argument_number = 0;
+		bool end = false;
+		for (int i = -1; !end; i--) {
+
+			switch (GETTOKEN(i)) {
+
+			case CST::TK_ERROR: {
+				res = CompletionType::COMPLETION_NONE;
+				end = true;
+				break;
+			}
+			case CST::TK_PARENTHESIS_OPEN: {
+				if (parenthesis == 0) {
+					if (GETTOKEN(i - 1) == CST::TK_IDENTIFIER)
+						completion_info_str = TOKENDATA(i - 1);
+					else res = CompletionType::COMPLETION_NONE; // error
+				}
+				else parenthesis++;
+				break;
+			}
+			case CST::TK_BRACKET_OPEN:
+			case CST::TK_CURLY_BRACKET_OPEN: {
+				if (parenthesis == 0) {
+					// you are in multidimensional array or block context
+					// example: array[1,2,    --> this is not function
+					// example: obj = { 1, 2, --> this is not function
+					res = CompletionType::COMPLETION_NONE;
+					end = true;
+				}
+				else parenthesis++;
+				break;
+			}
+			case CST::TK_PARENTHESIS_CLOSE:
+			case CST::TK_BRACKET_CLOSE:
+			case CST::TK_CURLY_BRACKET_CLOSE: {
+				parenthesis--;
+				break;
+			}
+			case CST::TK_COMMA: {
+				// parenthesis must be 0! example: func(arg1,invocation(a1,a2,a3),a3);
+				if (parenthesis == 0) cur_argument_number++;
+				break;
+			}
+			}
+		}
+
+		completion_info_int = cur_argument_number;
+		break;
+	}
+
+	// override function
+	case CST::TK_KW_OVERRIDE: {
+		res = CompletionType::COMPLETION_VIRTUAL_FUNC;
+		break;
+	}
+
+	// uzupelnienie jakiejs nazwy (wszystkie identifiery i keywordsy)
+	case CST::TK_IDENTIFIER: {
+
+		// maybe this is the begining of member?
+		if (GETTOKEN(-2) == CST::TK_PERIOD
+			|| GETTOKEN(-2) == CST::TK_OP_ARROW_FORWARD)
+		{
+			res = CompletionType::COMPLETION_MEMBER;
+
+		}
+
+		// or just begining or a word
+		else {
+			res = CompletionType::COMPLETION_IDENTIFIER;
+		}
+
+		break;
+	}
+
+	case CST::TK_COLON: {
+
+		if (GETTOKEN(-2) == CST::TK_KW_GOTO) {
+			res = CompletionType::COMPLETION_LABEL;
+		}
+
+		break;
+	}
+
+	}
+
+
+	return res;
+
+}
+
 void CSharpParser::_apply_modifiers(CSharpParser::Node* node) {
 	node->modifiers = this->modifiers;
 }
@@ -257,16 +396,17 @@ void CSharpParser::_apply_modifiers(CSharpParser::Node* node) {
 CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false) {
 
 	string name = "global";
+	TD td = tokens[pos];
 	if (!global) {
-		// is namespace?
-		if (!_is_actual_token(CST::TK_KW_NAMESPACE))
-			return nullptr;
-		else INCPOS(1);
 
-		// read name
-		if (!_is_actual_token(CST::TK_IDENTIFIER))
-			return nullptr;
-		else {
+		try {
+			// is namespace?
+			_assert(CST::TK_KW_NAMESPACE);
+			INCPOS(1); // skip 'namespace'
+
+			// read name
+			_assert(CST::TK_IDENTIFIER);
+
 			name = "";
 			while (true) {
 				_assert(CST::TK_IDENTIFIER);
@@ -281,25 +421,55 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 				}
 			}
 		}
+		catch (CSharpParserException &e) {
+			_escape();
+			return nullptr;
+		}
 	}
 
-	NamespaceNode* node = new NamespaceNode();
+	NamespaceNode* node = new NamespaceNode(td);
 	Node* prev_current = current;
 	NamespaceNode* prev_namespace = cur_namespace;
 	this->current = node;
 	this->cur_namespace = node;
+	string prev_fullname = actual_fullname;
+	this->actual_fullname += (actual_fullname == "") ? name : ("." + name);
 	node->name = name;
+	node->fullname = actual_fullname;
+	root->node_shortcuts.insert({ node->fullname,node });
 
-	_assert(CST::TK_CURLY_BRACKET_OPEN);
-	INCPOS(1); // skip '{'
+	try {
+		_assert(CST::TK_CURLY_BRACKET_OPEN);
+		INCPOS(1); // skip '{'
+		while (_parse_namespace_member(node));
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
+	}
 
-	Depth d = this->depth;
-	while (_parse_namespace_member(node));
-
+	// restore state
 	this->current = prev_current;
 	this->cur_namespace = prev_namespace;
+	this->actual_fullname = prev_fullname;
 	return node;
 
+}
+
+// zwraca zewnetrzne symbole widoczne w pliku
+set<string> CSharpParser::FileNode::get_external_identifiers()
+{
+	set<string> res;
+
+	for (auto n : namespaces) res.insert(n->name);
+	for (auto c : classes)    res.insert(c->name);
+	for (auto s : structures) res.insert(s->name);
+	for (auto i : interfaces) res.insert(i->name);
+	for (auto e : enums)      res.insert(e->name);
+	for (auto d : delegates)  res.insert(d->name);
+
+	return res;
 }
 
 void CSharpParser::FileNode::print(int indent) const {
@@ -325,11 +495,16 @@ void CSharpParser::FileNode::print(int indent) const {
 CSharpParser::FileNode * CSharpParser::_parse_file()
 {
 	FileNode* node = new FileNode();
+	this->root = node;
 	this->current = node;
 
-	while (_parse_using_directive(node));
-
-	while (_parse_namespace_member(node));
+	try {
+		while (_parse_using_directive(node));
+		while (_parse_namespace_member(node));
+	}
+	catch (CSharpParserException &e) {
+		// probably found eof token
+	}
 
 	this->current = nullptr;
 	return node;
@@ -385,6 +560,45 @@ void CSharpParser::_skip_until_token(CSharpLexer::Token tk) {
 
 }
 
+/* OLD ESCAPE FUNCTION 
+void CSharpParser::_escape() {
+
+	int destination;
+
+	if (cur_block != nullptr)          destination = cur_block->creator.depth;
+	else if (cur_block != nullptr)     destination = cur_block->creator.depth;
+	else if (cur_method != nullptr)    destination = cur_method->creator.depth;
+	else if (cur_class != nullptr)     destination = cur_class->creator.depth;
+	else if (cur_namespace != nullptr) destination = cur_namespace->creator.depth;
+	else                               destination = 0;
+
+	while (true) {
+
+		if (pos >= len) return; // end
+		if (tokens[pos].depth == destination) return;
+
+		INCPOS(1);
+	}
+
+}
+*/
+
+string CSharpParser::completion_type_name(CompletionType type)
+{
+	switch (type) {
+	case CompletionType::COMPLETION_NONE:           return "none";
+	case CompletionType::COMPLETION_TYPE:           return "type";
+	case CompletionType::COMPLETION_MEMBER:         return "member";
+	case CompletionType::COMPLETION_CALL_ARGUMENTS: return "argument";
+	case CompletionType::COMPLETION_LABEL:          return "label";
+	case CompletionType::COMPLETION_VIRTUAL_FUNC:   return "virtual func";
+	case CompletionType::COMPLETION_ASSIGN:         return "assign";
+	case CompletionType::COMPLETION_IDENTIFIER:     return "identifier";
+	};
+
+	return "";
+}
+
 
 
 vector<string> CSharpParser::_parse_generic_declaration() {
@@ -394,59 +608,59 @@ vector<string> CSharpParser::_parse_generic_declaration() {
 
 	vector<string> generic_declarations;
 
-	while (true) {
+	bool end = false;
+	while (!end) {
 		switch (GETTOKEN(0)) {
 
-		CASEATYPICAL(generic_declarations)
+		CASEATYPICAL
 
-		case CST::TK_IDENTIFIER: { 
-			generic_declarations.push_back(TOKENDATA(0));
-			INCPOS(1); break; 
-		}
+		case CST::TK_IDENTIFIER: {
+				generic_declarations.push_back(TOKENDATA(0));
+				INCPOS(1); break;
+			}
 		case CST::TK_COMMA: { INCPOS(1); break; }
-		case CST::TK_OP_GREATER: { INCPOS(1); return generic_declarations; }
+		case CST::TK_OP_GREATER: { INCPOS(1); end = true; break; }
 		default: {
 			_unexpeced_token_error();
-			INCPOS(1);
 		}
 		}
 	}
 
 	return generic_declarations;
+
 }
 
 vector<string> CSharpParser::_parse_derived_and_implements(bool generic_context) {
 
 	_assert(CST::TK_COLON);
 	INCPOS(1); // skip ':'
-	
+
 	vector<string> types;
 
-	while (true) {
+	bool end = false;
+	while (!end) {
 		switch (GETTOKEN(0)) {
 
-		CASEATYPICAL(types)
+		CASEATYPICAL
 
 		case CST::TK_IDENTIFIER: {
-			string type = _parse_type();
-			types.push_back(type);
-			break;
-		}
+				string type = _parse_type();
+				types.push_back(type);
+				break;
+			}
 		case CST::TK_COMMA: { INCPOS(1); break; }
-		case CST::TK_CURLY_BRACKET_OPEN: { return types; }
+		case CST::TK_CURLY_BRACKET_OPEN: { end = true; break; }
 		default: {
 			if (generic_context && _is_actual_token(CST::TK_KW_WHERE)) {
-				return types;
+				end = true; break;
 			}
-
+			// else
 			_unexpeced_token_error();
-			INCPOS(1);
 		}
 		}
 	}
 
 	return types;
-
 }
 
 // generic -> where T : C1, new()
@@ -463,58 +677,79 @@ string CSharpParser::_parse_constraints() {
 
 CSharpParser::ClassNode* CSharpParser::_parse_class() {
 
+	TD td = tokens[pos];
+
 	_assert(CST::TK_KW_CLASS);
+
 	INCPOS(1); // skip 'class'
+
 	_assert(CST::TK_IDENTIFIER);
 
-	ClassNode* node = new ClassNode();
+	ClassNode* node = new ClassNode(td);
 	Node* prev_current = current;
 	ClassNode* prev_class = cur_class;
 	this->current = node;
 	this->cur_class = node;
+
+	string prev_fullname = actual_fullname;
 	node->name = TOKENDATA(0);
-	INCPOS(1);
+	this->actual_fullname += (actual_fullname == "") ? node->name : ("." + node->name);
+	node->fullname = actual_fullname;
+	root->node_shortcuts.insert({ node->fullname,node });
+
+	INCPOS(1); // skip name
 
 	_apply_attributes(node);
 	_apply_modifiers(node);
 
-	// generic
-	if (_is_actual_token(CST::TK_OP_LESS)) {
-		node->is_generic = true;
-		node->generic_declarations = _parse_generic_declaration();
+	try {
+		// generic
+		if (_is_actual_token(CST::TK_OP_LESS)) {
+			node->is_generic = true;
+			node->generic_declarations = _parse_generic_declaration();
+		}
+
+		// derived and implements
+		if (_is_actual_token(CST::TK_COLON)) {
+			node->base_types = _parse_derived_and_implements(node->is_generic);
+		}
+
+		// constraints
+		if (_is_actual_token(CST::TK_KW_WHERE)) {
+			node->constraints = _parse_constraints();
+		}
+
+		_assert(CST::TK_CURLY_BRACKET_OPEN);
+		INCPOS(1); // skip '{'
+		while (_parse_class_member(node));
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
-	// derived and implements
-	if (_is_actual_token(CST::TK_COLON)) {
-		node->base_types = _parse_derived_and_implements(node->is_generic);
-	}
 
-	// constraints
-	if (_is_actual_token(CST::TK_KW_WHERE)) {
-		node->constraints = _parse_constraints();
-	}
-	
-	_assert(CST::TK_CURLY_BRACKET_OPEN);
-	INCPOS(1); // skip '{'
-
-	while (_parse_class_member(node));
-
+	// restore state
 	this->current = prev_current;
 	this->cur_class = prev_class;
+	this->actual_fullname = prev_fullname;
 	return node;
 }
 
 string CSharpParser::_parse_initialization_block() {
 	
 	_assert(CST::TK_CURLY_BRACKET_OPEN);
+
 	INCPOS(1); // skip '{'
 
 	string initialization_block = "{ ";
-	while (true) {
+	bool end = false;
+	while (!end) {
 
 		switch (GETTOKEN(0)) {
 
-		CASEATYPICAL(initialization_block)
+		CASEATYPICAL
 
 		CASELITERAL {
 			initialization_block += TOKENDATA(0);
@@ -544,11 +779,13 @@ string CSharpParser::_parse_initialization_block() {
 		case CST::TK_CURLY_BRACKET_CLOSE: {
 			initialization_block += " }";
 			INCPOS(1); // skip '}'
-			return initialization_block;
+			end = true;
+			break;
 		}
 		default: {
 			_unexpeced_token_error();
-			INCPOS(1);
+			_escape();
+			end = true;
 		}
 
 		}
@@ -566,17 +803,18 @@ string CSharpParser::_parse_new() {
 	// new { ... } (anonymous) --> new { x = 1, y = 2 }
 
 	_assert(CST::TK_KW_NEW);
+
 	INCPOS(1); // skip 'new'
 	string res = "new ";
 
 	switch (GETTOKEN(0)) {
 
-	CASEATYPICAL("")
+	CASEATYPICAL
 
 	case CST::TK_CURLY_BRACKET_OPEN: {
 		string initialization_block = _parse_initialization_block();
 		res += initialization_block;
-		return res;
+		break;
 	}
 	case CST::TK_CURLY_BRACKET_CLOSE: {
 		// todo
@@ -608,7 +846,6 @@ string CSharpParser::_parse_new() {
 
 	default: {
 		_unexpeced_token_error();
-		INCPOS(1);
 	}
 	}
 
@@ -624,93 +861,80 @@ string CSharpParser::_parse_expression() {
 
 	int parenthesis_depth = 0;
 	int bracket_depth = 0;
-	string res = "";
-	while (true) {
+	string prev_expression = cur_expression;
+	cur_expression = "";
+	bool end = false;
+	while (!end) {
 		debug_info();
 		switch (GETTOKEN(0)) {
 
-		CASEATYPICAL("")
+		CASEATYPICAL
 
 		CASEBASETYPE {
 			string type = _parse_type();
-			res += type;
+			cur_expression += type;
 			break;
 		}
 
-		case CST::TK_KW_AWAIT: {
-			INCPOS(1); // ignore
-			break;
-		}
-		case CST::TK_KW_BASE: {
-			INCPOS(1); // reference to base type
-			break;
-		}
-		case CST::TK_KW_AS: {
-			INCPOS(1); // ignore (postfix cast)
-			break;
-		}
-		case CST::TK_KW_THIS: {
-			INCPOS(1); // reference to pointer
-			break;
-		}
-		case CST::TK_KW_NAMEOF: {
-			INCPOS(1);
-			break;
-		}
+		case CST::TK_KW_AWAIT:
+		case CST::TK_KW_BASE:
+		case CST::TK_KW_AS:
+		case CST::TK_KW_THIS:
+		case CST::TK_KW_NAMEOF:
 		case CST::TK_KW_NULL: {
+			cur_expression += CSharpLexer::token_names[(int)GETTOKEN(0)];
 			INCPOS(1);
 			break;
 		}
 		case CST::TK_KW_NEW: {
 			
 			// new Int32(1) + 9 <-- this is expression
-			res += _parse_new();
+			cur_expression += _parse_new();
 			break;
 		}
 
 		case CST::TK_COLON: {
 			INCPOS(1); // ignore (TODO zmienic na ogarnianie operatora ? : )
-			res += ":";
+			cur_expression += ":";
 			break;
 		}
 
 		// end if
 		case CST::TK_COMMA: {
-			if (parenthesis_depth == 0 && bracket_depth == 0) return res; 
-			else { res += ","; INCPOS(1); break; }
+			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
+			else { cur_expression += ","; INCPOS(1); }
+			break;
 		}
 		case CST::TK_SEMICOLON: {
-			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
+			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
 			else { }// TODO ERROR
+			break;
 		}
 		case CST::TK_PARENTHESIS_CLOSE: {
-			
-			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
-			else {
-				parenthesis_depth--;
-				res += ")"; 
-				INCPOS(1); break; }
+			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
+			else { parenthesis_depth--; cur_expression += ")"; INCPOS(1); }
+			break;
 		}
 
 		// function invokation
 		case CST::TK_PARENTHESIS_OPEN: {
 			parenthesis_depth++;
-			res += "(";
+			cur_expression += "(";
 			INCPOS(1);
-			res += _parse_expression(); // inside
+			cur_expression += _parse_expression(); // inside
 			break;
 		}
 
 		case CST::TK_OP_LAMBDA: {
 			// TODO to jest bardzo slabe rozwiazanie
-			res += " => ";
+			cur_expression += " => ";
 			INCPOS(1);
 			string s = _parse_expression();
-			res += s;
+			cur_expression += s;
 			break;
 		}
 
-		CASELITERAL { res += TOKENDATA(0); INCPOS(1); break; }
+		CASELITERAL { cur_expression += TOKENDATA(0); INCPOS(1); break; }
 		case CST::TK_IDENTIFIER: { 
 			
 			// maybe it is a type (MyOwnType)
@@ -722,34 +946,33 @@ string CSharpParser::_parse_expression() {
 				// this is not a type, neither access to array
 				// it can be eg method invocation -> add to res and decide in next iteration
 				pos = cur_pos;
-				res += TOKENDATA(0);
+				cur_expression += TOKENDATA(0);
 				INCPOS(1);
 				break;
 			}
 			else {
 
-				res += type;
+				cur_expression += type;
 				break;
 
 			}
 		}
-		case CST::TK_PERIOD: { res += "."; INCPOS(1); break; }
-		case CST::TK_BRACKET_OPEN: { bracket_depth++; INCPOS(1); res += "[" + _parse_expression(); break; }
+		case CST::TK_PERIOD: { cur_expression += "."; INCPOS(1); break; }
+		case CST::TK_BRACKET_OPEN: { bracket_depth++; INCPOS(1); cur_expression += "[" + _parse_expression(); break; }
 
 		case CST::TK_BRACKET_CLOSE: {
-			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
-			else { bracket_depth--; res += "]"; INCPOS(1); break; }
+			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
+			else { bracket_depth--; cur_expression += "]"; INCPOS(1); }
+			break;
 		}
 		case CST::TK_CURLY_BRACKET_CLOSE: { // for initialization block: var x = new { a = EXPR };
-			if (parenthesis_depth == 0 && bracket_depth == 0) return res;
-			else {
-				// todo error
-			}
+			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
+			else _unexpeced_token_error();
 			break;
 		}
 		case CST::TK_CURLY_BRACKET_OPEN: {
 			BlockNode* node = _parse_block();
-			res += "{ ... }";
+			cur_expression += "{ ... }";
 			break;
 		}
 
@@ -758,7 +981,7 @@ string CSharpParser::_parse_expression() {
 
 			CSharpLexer::Token t = GETTOKEN(0);
 			if (CSharpLexer::is_operator(t)) {
-				res += CSharpLexer::token_names[(int)GETTOKEN(0)];
+				cur_expression += CSharpLexer::token_names[(int)GETTOKEN(0)];
 				INCPOS(1);
 
 				//if (CSharpLexer::is_assignment_operator(t)) {
@@ -768,21 +991,20 @@ string CSharpParser::_parse_expression() {
 			}
 
 			else if (this->kw_value_allowed && t == CST::TK_KW_VALUE) {
-				res += "value";
+				cur_expression += "value";
 				INCPOS(1);
 				break;
 			}
 
 			else if (CSharpLexer::is_context_keyword(t)) {
 
-				res += CSharpLexer::token_names[(int)t];
+				cur_expression += CSharpLexer::token_names[(int)t];
 				INCPOS(1);
 				break;
 			}
 
 			else {
 				_unexpeced_token_error();
-				INCPOS(1);
 			}
 		}
 
@@ -791,115 +1013,135 @@ string CSharpParser::_parse_expression() {
 
 	}
 
+	string res = cur_expression;
+	cur_expression = prev_expression;
 	return res;
 	
 }
 
 CSharpParser::EnumNode* CSharpParser::_parse_enum() {
 
+	TD td = tokens[pos];
 	_assert(CST::TK_KW_ENUM);
+
 	INCPOS(1); // skip 'enum'
 
 	// read name
 	_assert(CST::TK_IDENTIFIER);
 
-	EnumNode* node = new EnumNode();
+	EnumNode* node = new EnumNode(td);
 	Node* prev_current = current;
 	this->current = node;
 	node->name = TOKENDATA(0);
-	INCPOS(1);
+	node->fullname = (actual_fullname == "") ? node->name : ("." + node->name);
+	root->node_shortcuts.insert({ node->fullname,node });
+
+	INCPOS(1); // skip name
 
 	_apply_attributes(node);
 	_apply_modifiers(node);
 
 	node->type = "int"; // default
 
-	// enum type
-	if (_is_actual_token(CST::TK_COLON)) {
-		INCPOS(1); // skip ';'
-		node->type = _parse_type();
+	try {
+
+		// enum type
+		if (_is_actual_token(CST::TK_COLON)) {
+			INCPOS(1); // skip ';'
+			node->type = _parse_type();
+		}
+
+		// parse members
+		bool end = false;
+		while (!end) {
+
+			switch (GETTOKEN(0)) {
+
+			CASEATYPICAL
+
+			case CST::TK_IDENTIFIER: {
+					node->members.push_back(TOKENDATA(0));
+					INCPOS(1);
+					break;
+				}
+			case CST::TK_OP_ASSIGN: {
+				INCPOS(1); // skip '='
+				_parse_expression(); // don't care about values
+				break;
+			}
+			case CST::TK_COMMA: {
+				INCPOS(1); // skip ','
+				break;
+			}
+			case CST::TK_CURLY_BRACKET_CLOSE: {
+				INCPOS(1); // skip '}'
+				end = true; break;
+			}
+			default: {
+				_unexpeced_token_error();
+			}
+			}
+		}
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
-	// parse members
-	bool end = false;
-	while (!end) {
-
-		switch (GETTOKEN(0)) {
-
-		CASEATYPICAL(nullptr)
-
-		case CST::TK_IDENTIFIER: {
-			node->members.push_back(TOKENDATA(0));
-			INCPOS(1);
-			break;
-		}
-		case CST::TK_OP_ASSIGN: {
-			INCPOS(1); // skip '='
-			_parse_expression(); // don't care about values
-			break;
-		}
-		case CST::TK_COMMA: {
-			INCPOS(1); // skip ','
-			break;
-		}
-		case CST::TK_CURLY_BRACKET_CLOSE: {
-			INCPOS(1); // skip '}'
-			end = true; break;
-		}
-		default: {
-			_unexpeced_token_error();
-			INCPOS(1);
-		}
-		}
-	}
-
+	// restore
 	this->current = prev_current;
 	return node;
 }
 
 CSharpParser::JumpNode* CSharpParser::_parse_jump() {
 
-	JumpNode* node = new JumpNode();
+	TD td = tokens[pos];
+	JumpNode* node = new JumpNode(td);
 	Node* prev_current = current;
 	this->current = node;
 
-	// type of jump
-	switch (GETTOKEN(0)) {
-	case CST::TK_KW_BREAK: node->jump_type = JumpNode::Type::BREAK; break;
-	case CST::TK_KW_CONTINUE: node->jump_type = JumpNode::Type::CONTINUE; break;
-	case CST::TK_KW_GOTO: node->jump_type = JumpNode::Type::GOTO; break;
-	case CST::TK_KW_RETURN: node->jump_type = JumpNode::Type::RETURN; break;
-	case CST::TK_KW_YIELD: node->jump_type = JumpNode::Type::YIELD; break;
-	case CST::TK_KW_THROW: node->jump_type = JumpNode::Type::THROW; break;
-	default: { 
-		_unexpeced_token_error();
-		INCPOS(1);
-		delete node;
-		this->current = prev_current;
-		return nullptr;
-	}
-	}
+	try {
 
-	node->raw = CSharpLexer::token_names[(int)GETTOKEN(0)];
-	INCPOS(1); // skip keyword
-
-	bool end = false;
-	while (!end) {
+		// type of jump
 		switch (GETTOKEN(0)) {
-			
-		CASEATYPICAL(nullptr)
+		case CST::TK_KW_BREAK: node->jump_type = JumpNode::Type::BREAK; break;
+		case CST::TK_KW_CONTINUE: node->jump_type = JumpNode::Type::CONTINUE; break;
+		case CST::TK_KW_GOTO: node->jump_type = JumpNode::Type::GOTO; break;
+		case CST::TK_KW_RETURN: node->jump_type = JumpNode::Type::RETURN; break;
+		case CST::TK_KW_YIELD: node->jump_type = JumpNode::Type::YIELD; break;
+		case CST::TK_KW_THROW: node->jump_type = JumpNode::Type::THROW; break;
+		default: _unexpeced_token_error();
+		}
 
-		case CST::TK_SEMICOLON: {
-			node->raw += ";";
-			end = true;
-			INCPOS(1);
-			break;
+		node->raw = CSharpLexer::token_names[(int)GETTOKEN(0)];
+		INCPOS(1); // skip keyword
+
+		bool end = false;
+		while (!end) {
+			switch (GETTOKEN(0)) {
+
+			CASEATYPICAL
+
+			case CST::TK_SEMICOLON: {
+					node->raw += ";";
+					end = true;
+					INCPOS(1);
+					break;
+				}
+			default: {
+				node->raw +=
+					(GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0)
+						: CSharpLexer::token_names[(int)GETTOKEN(0)]);
+				INCPOS(1);
+			}
+			}
 		}
-		default: {
-			node->raw += (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]);
-			INCPOS(1);
-		}
-		}
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
 	this->current = prev_current;
@@ -909,96 +1151,104 @@ CSharpParser::JumpNode* CSharpParser::_parse_jump() {
 
 CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 
-	LoopNode* node = new LoopNode();
+	TD td = tokens[pos];
+	LoopNode* node = new LoopNode(td);
 	Node* prev_current = current;
 	this->current = node;
 
-	// type of loop
-	switch (GETTOKEN(0)) {
-	case CST::TK_KW_DO: node->loop_type = LoopNode::Type::DO; break;
-	case CST::TK_KW_FOR: node->loop_type = LoopNode::Type::FOR; break;
-	case CST::TK_KW_FOREACH: node->loop_type = LoopNode::Type::FOREACH; break;
-	case CST::TK_KW_WHILE: node->loop_type = LoopNode::Type::WHILE; break;
-	default: { delete node; this->current = prev_current; return nullptr; }
-	}
-
-	INCPOS(1); // skip keyword
-
-	// ----- ----- -----
-	// PARSE BEFORE BLOCK
-
-	// ----- FOR -----
-	if (node->loop_type == LoopNode::Type::FOR) {
-
-		INCPOS(1); // skip '('
-
-		// init
-		VarNode* variable = _parse_declaration();
-		
-		if (variable == nullptr) {
-			_skip_until_token(CST::TK_SEMICOLON); // assignment or sth else
-		}
-		else {
-			node->local_variable = variable;
+	try {
+		// type of loop
+		switch (GETTOKEN(0)) {
+		case CST::TK_KW_DO:      node->loop_type = LoopNode::Type::DO;      break;
+		case CST::TK_KW_FOR:     node->loop_type = LoopNode::Type::FOR;     break;
+		case CST::TK_KW_FOREACH: node->loop_type = LoopNode::Type::FOREACH; break;
+		case CST::TK_KW_WHILE:   node->loop_type = LoopNode::Type::WHILE;   break;
+		default: _unexpeced_token_error();
 		}
 
-		INCPOS(1); // skip ';'
+		INCPOS(1); // skip keyword
 
-		// cond
-		_skip_until_token(CST::TK_SEMICOLON);
-		INCPOS(1); // skip ';'
+		// ----- ----- -----
+		// PARSE BEFORE BLOCK
 
-		// iter
-		_skip_until_token(CST::TK_PARENTHESIS_CLOSE);
-		INCPOS(1); // skip ')'
+		// ----- FOR -----
+		if (node->loop_type == LoopNode::Type::FOR) {
 
-	}
+			INCPOS(1); // skip '('
 
-	// ----- FOREACH -----
-	else if (node->loop_type == LoopNode::Type::FOREACH) {
+			// init
+			VarNode* variable = _parse_declaration();
 
-		INCPOS(1); // skip '('
+			if (variable == nullptr) {
+				_skip_until_token(CST::TK_SEMICOLON); // assignment or sth else
+			}
+			else {
+				node->local_variable = variable;
+			}
 
-		// declaration
-		VarNode* variable = _parse_declaration();
-		if (variable == nullptr) {
-			_skip_until_token(CST::TK_KW_IN);
+			INCPOS(1); // skip ';'
+
+			// cond
+			_skip_until_token(CST::TK_SEMICOLON);
+			INCPOS(1); // skip ';'
+
+			// iter
+			_skip_until_token(CST::TK_PARENTHESIS_CLOSE);
+			INCPOS(1); // skip ')'
+
 		}
-		else {
-			node->local_variable = variable;
+
+		// ----- FOREACH -----
+		else if (node->loop_type == LoopNode::Type::FOREACH) {
+
+			INCPOS(1); // skip '('
+
+			// declaration
+			VarNode* variable = _parse_declaration();
+			if (variable == nullptr) {
+				_skip_until_token(CST::TK_KW_IN);
+			}
+			else {
+				node->local_variable = variable;
+			}
+
+			_assert(CST::TK_KW_IN);
+			INCPOS(1); // skip 'in'
+
+			_parse_expression();
+
+			_assert(CST::TK_PARENTHESIS_CLOSE);
+			INCPOS(1); // skip ')'
 		}
 
-		_assert(CST::TK_KW_IN);
-		INCPOS(1); // skip 'in'
+		// ----- WHILE -----
+		else if (node->loop_type == LoopNode::Type::WHILE) {
 
+			// cond
+			_skip_until_token(CST::TK_PARENTHESIS_CLOSE);
+			INCPOS(1); // skip ')'
 
-		// in
-		_parse_expression();
+		}
 
-		_assert(CST::TK_PARENTHESIS_CLOSE);
-		INCPOS(1); // skip ')'
+		// ----- ----- -----
+		// PARSE BLOCK
+		node->body = _parse_statement();
+		node->body->parent = node; // bind
+
+		// ----- ----- -----
+		// PARSE AFTER BLOCK
+		if (node->loop_type == LoopNode::Type::DO) {
+			//todo skip while
+		}
+
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
-	// ----- WHILE -----
-	else if (node->loop_type == LoopNode::Type::WHILE) {
-
-		// cond
-		_skip_until_token(CST::TK_PARENTHESIS_CLOSE);
-		INCPOS(1); // skip ')'
-
-	}
-
-	// ----- ----- -----
-	// PARSE BLOCK
-	node->body = _parse_statement();
-	node->body->parent = node; // bind
-
-	// ----- ----- -----
-	// PARSE AFTER BLOCK
-	if (node->loop_type == LoopNode::Type::DO) {
-		//todo skip while
-	}
-
+	// restore
 	this->current = prev_current;
 	return node;
 }
@@ -1025,24 +1275,18 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 	bool generic_types_mode = false;
 	bool array_mode = false;
 
-	while (true) {
+	bool end = false;
+	while (!end) {
 		debug_info();
 
 		switch (GETTOKEN(0)) {
 
-		CASEATYPICAL("")
+		CASEATYPICAL
 
 		case CST::TK_OP_QUESTION_MARK: {
-
 			// nullable type
-			if (base_type) {
-				res += "?";
-				INCPOS(1);
-				break;
-			}
-			else {
-				return ""; // error
-			}
+			if (base_type) { res += "?"; INCPOS(1); break; }
+			else _unexpeced_token_error();
 		}
 
 		case CST::TK_OP_LESS: { // <
@@ -1062,7 +1306,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 
 			// this is end unless it is '['
 			if (GETTOKEN(0) != CST::TK_BRACKET_OPEN) {
-				return res;
+				end = true;
 			}
 
 			break;
@@ -1084,7 +1328,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			INCPOS(1);
 
 			// for sure this is end of type
-			return res;
+			end = true; break;
 		}
 
 		case CST::TK_COMMA: { // ,
@@ -1098,7 +1342,9 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 				INCPOS(1);
 			}
 			else {
-				return ""; // error
+				_unexpeced_token_error();
+				_escape();
+				end = true;
 			}
 			break;
 		}
@@ -1107,9 +1353,9 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 		CASEBASETYPE {
 
 			if (complex_type) {
-				return "";
-				// TODO error -> System.Reflexion.int ??????
+				// error -> System.Reflexion.int ??????
 				// vector<int> still allowed, cause int will be parsed recursively
+				_unexpeced_token_error();
 			}
 
 			base_type = true;
@@ -1129,7 +1375,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 		case CST::TK_IDENTIFIER: {
 
 			if (base_type) {
-				return ""; // error
+				_unexpeced_token_error();
 			}
 
 			complex_type = true;
@@ -1149,14 +1395,13 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 				break; // don't skip!
 			}
 			else { // none of '.', '<', '['
-				return res;
+				end = true; break;
 			}
 			break;
 		}
 		default: {
 
 			_unexpeced_token_error();
-			INCPOS(1);
 		}
 		}
 	}
@@ -1186,19 +1431,26 @@ bool CSharpParser::_parse_using_directive(FileNode* node) {
 		is_static = true;
 	}
 
-	// read name or type
-	string name_or_type = _parse_type();
-	string refers_to;
+	try {
 
-	if (_is_actual_token(CST::TK_OP_ASSIGN)) {
-		INCPOS(1);
-		is_alias = true;
-		refers_to = _parse_type();
+		// read name or type
+		string name_or_type = _parse_type();
+		string refers_to;
+
+		if (_is_actual_token(CST::TK_OP_ASSIGN)) {
+			INCPOS(1);
+			is_alias = true;
+			refers_to = _parse_type();
+		}
+
+		_assert(CST::TK_SEMICOLON);
+		INCPOS(1); // skip ';'
+		node->using_directives.push_back(name_or_type);
+
 	}
-
-	_assert(CST::TK_SEMICOLON);
-	INCPOS(1); // skip ';'
-	node->using_directives.push_back(name_or_type);
+	catch (CSharpParserException &e) {
+		_skip_until_next_line(); // skip this using line
+	}
 
 	return true;
 }
@@ -1214,7 +1466,7 @@ bool CSharpParser::_parse_namespace_member(NamespaceNode* node) {
 
 	switch (GETTOKEN(0)) {
 
-		CASEATYPICAL(false)
+	CASEATYPICAL
 
 	case CST::TK_KW_NAMESPACE: {
 		NamespaceNode* member = _parse_namespace();
@@ -1275,10 +1527,8 @@ bool CSharpParser::_parse_namespace_member(NamespaceNode* node) {
 		return false;
 	}
 
-	default: {
-		
+	default: {		
 		_unexpeced_token_error();
-		INCPOS(1);
 	}
 	}
 
@@ -1349,6 +1599,8 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 	}
 	default: {
 
+		TD td = tokens[pos];
+
 		// field (var), property or method
 		string type = _parse_type();
 
@@ -1357,7 +1609,7 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 
 			if (type != node->name) {
 				_unexpeced_token_error();
-				INCPOS(1);
+				_escape();
 				break;
 			}
 
@@ -1377,7 +1629,7 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 		// FIELD
 		if (_is_actual_token(CST::TK_SEMICOLON)) {
 
-			VarNode* member = new VarNode(name, type);
+			VarNode* member = new VarNode(name, type, td);
 			_apply_modifiers(member); // is const?
 			node->variables.push_back(member);
 			member->parent = node;
@@ -1387,7 +1639,7 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 		// FIELD WITH ASSIGNMENT
 		else if (_is_actual_token(CST::TK_OP_ASSIGN)) {
 			
-			VarNode* member = new VarNode(name, type);
+			VarNode* member = new VarNode(name, type, td);
 			node->variables.push_back(member);
 			member->parent = node;
 			INCPOS(1); // skip '='
@@ -1423,7 +1675,6 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 
 		else {
 			_unexpeced_token_error();
-			INCPOS(1);
 		}
 
 	}
@@ -1441,7 +1692,7 @@ bool CSharpParser::_parse_interface_member(InterfaceNode* node) {
 
 	switch (GETTOKEN(0)) {
 
-	CASEATYPICAL(false)
+	CASEATYPICAL
 
 	case CST::TK_CURLY_BRACKET_CLOSE: {
 
@@ -1485,7 +1736,6 @@ bool CSharpParser::_parse_interface_member(InterfaceNode* node) {
 
 		else {
 			_unexpeced_token_error();
-			INCPOS(1);
 		}
 	}
 
@@ -1519,7 +1769,8 @@ CSharpParser::VarNode* CSharpParser::_parse_declaration() {
 	// type name = x;
 	// const type name = x;
 
-	VarNode* variable = new VarNode();
+	TD td = tokens[pos];
+	VarNode* variable = new VarNode(td);
 	Node* prev_current = current;
 	this->current = variable;
 
@@ -1528,29 +1779,37 @@ CSharpParser::VarNode* CSharpParser::_parse_declaration() {
 		INCPOS(1);
 	}
 
-	string type = _parse_type();
-	variable->type = type;
+	try {
+		string type = _parse_type();
+		variable->type = type;
 
-	if (_is_actual_token(CST::TK_IDENTIFIER)) {
-		variable->name = TOKENDATA(0);
-		INCPOS(1);
+		if (_is_actual_token(CST::TK_IDENTIFIER)) {
+			variable->name = TOKENDATA(0);
+			INCPOS(1);
+		}
+		else {
+			delete variable;
+			this->current = prev_current;
+			return nullptr;
+		}
+
+		// int x;
+		if (!_is_actual_token(CST::TK_OP_ASSIGN)) {
+			this->current = prev_current;
+			return variable;
+		}
+		// int x = expr;
+		INCPOS(1); // skip '='
+		string expression = _parse_expression();
+		variable->value = expression;
 	}
-	else {
+	catch (CSharpParserException &e) {
+		_escape();
 		delete variable;
-		this->current = prev_current;
-		return nullptr;
+		variable = nullptr;
 	}
 
-	// int x;
-	if (!_is_actual_token(CST::TK_OP_ASSIGN)) {
-		this->current = prev_current;
-		return variable;
-	}
-	// int x = expr;
-	INCPOS(1); // skip '='
-	string expression = _parse_expression();
-	variable->value = expression;
-
+	// restore
 	this->current = prev_current;
 	return variable;
 }
@@ -1562,105 +1821,130 @@ CSharpParser::StructNode* CSharpParser::_parse_struct() {
 
 CSharpParser::InterfaceNode* CSharpParser::_parse_interface() {
 
+	TD td = tokens[pos];
 	_assert(CST::TK_KW_INTERFACE);
 	INCPOS(1); // skip 'interface'
 
 	// read name
 	_assert(CST::TK_IDENTIFIER);
-	InterfaceNode* node = new InterfaceNode();
+	InterfaceNode* node = new InterfaceNode(td);
 	Node* prev_current = current;
 	this->current = node;
+
+	string prev_fullname = this->actual_fullname;
 	node->name = TOKENDATA(0);
-	INCPOS(1);
+	this->actual_fullname += (actual_fullname == "") ? node->name : ("." + node->name);
+	node->fullname = actual_fullname;
+	root->node_shortcuts.insert({ node->fullname,node });
+
+	INCPOS(1); // skip name
 
 	_apply_attributes(node);
 	_apply_modifiers(node);
 
-	// generic
-	if (_is_actual_token(CST::TK_OP_LESS)) {
-		node->is_generic = true;
-		node->generic_declarations = _parse_generic_declaration();
+	try {
+		// generic
+		if (_is_actual_token(CST::TK_OP_LESS)) {
+			node->is_generic = true;
+			node->generic_declarations = _parse_generic_declaration();
+		}
+
+		// derived and implements
+		if (_is_actual_token(CST::TK_COLON)) {
+			node->base_types = _parse_derived_and_implements(node->is_generic);
+		}
+
+		// constraints
+		if (_is_actual_token(CST::TK_KW_WHERE)) {
+			node->constraints = _parse_constraints();
+		}
+
+		_assert(CST::TK_CURLY_BRACKET_OPEN);
+		INCPOS(1); // skip '}'
+		while (_parse_interface_member(node));
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
-	// derived and implements
-	if (_is_actual_token(CST::TK_COLON)) {
-		node->base_types = _parse_derived_and_implements(node->is_generic);
-	}
-
-	// constraints
-	if (_is_actual_token(CST::TK_KW_WHERE)) {
-		node->constraints = _parse_constraints();
-	}
-
-	_assert(CST::TK_CURLY_BRACKET_OPEN);
-	INCPOS(1); // skip '}'
-
-	while (_parse_interface_member(node));
-
+	// restore
 	this->current = prev_current;
+	this->actual_fullname = prev_fullname;
 	return node;
 
 }
 
 CSharpParser::UsingNode* CSharpParser::_parse_using_statement() {
 	
+	TD td = tokens[pos];
 	_assert(CST::TK_KW_USING);
 
 	// using ( declaration or expression ) statement
 	// using declaration // TODO to jeszcze nie dziala (C#8)
 
-	UsingNode* node = new UsingNode();
+	UsingNode* node = new UsingNode(td);
 	Node* prev_current = current;
 	this->current = node;
 
-	INCPOS(1);
+	INCPOS(1); // skip 'using'
 	node->raw = "using ";
 
+	try {
 
-	// USING DECLARATION VERSION
-	if (!_is_actual_token(CST::TK_PARENTHESIS_OPEN)) {
+		// USING DECLARATION VERSION
+		if (!_is_actual_token(CST::TK_PARENTHESIS_OPEN)) {
 
-		// TODO to nie dziala
+			// TODO to nie dziala
 
-		VarNode* variable = _parse_declaration();
-		if (variable == nullptr) {
-			return nullptr; // error
+			VarNode* variable = _parse_declaration();
+			if (variable == nullptr) {
+				return nullptr; // error
+			}
+
+			_assert(CST::TK_SEMICOLON);
+			INCPOS(1); // skip ';'
+			return node;
+
 		}
 
-		_assert(CST::TK_SEMICOLON);
-		INCPOS(1); // skip ';'
-		return node;
+
+		// NORMAL VERSION
+		_assert(CST::TK_PARENTHESIS_OPEN);
+		INCPOS(1); // skip '('
+		node->raw += "(";
+
+		// parse declaration or expression
+		int cur_pos = pos;
+		VarNode* variable = _parse_declaration();
+		if (variable != nullptr) {
+			// it was declaration
+			node->local_variable = variable;
+		}
+		else {
+			// it is expression
+			pos = cur_pos; // reset and retry
+			string expr = _parse_expression();
+			node->raw += expr;
+		}
+
+		_assert(CST::TK_PARENTHESIS_CLOSE);
+		INCPOS(1); // skip ')'
+		node->raw += ")";
+
+		StatementNode* statement = _parse_statement();
+		node->body = statement;
+		statement->parent = node;
 
 	}
-
-
-	// NORMAL VERSION
-	_assert(CST::TK_PARENTHESIS_OPEN);
-	INCPOS(1); // skip '('
-	node->raw += "(";
-
-	// parse declaration or expression
-	int cur_pos = pos;
-	VarNode* variable = _parse_declaration();
-	if (variable != nullptr) { 
-		// it was declaration
-		node->local_variable = variable;
-	}
-	else { 
-		// it is expression
-		pos = cur_pos; // reset and retry
-		string expr = _parse_expression();
-		node->raw += expr;
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
-	_assert(CST::TK_PARENTHESIS_CLOSE);
-	INCPOS(1); // skip ')'
-	node->raw += ")";
-
-	StatementNode* statement = _parse_statement();
-	node->body = statement;
-	statement->parent = node;
-	
+	// restore
 	this->current = prev_current;
 	return node;
 }
@@ -1669,46 +1953,58 @@ CSharpParser::UsingNode* CSharpParser::_parse_using_statement() {
 CSharpParser::ConditionNode* CSharpParser::_parse_if_statement() {
 	
 	// if ( expr ) statement else statement
-	ConditionNode* node = new ConditionNode();
+	
+	TD td = tokens[pos];
+	
+	_assert(CST::TK_KW_IF);
+	INCPOS(1); // skip 'if'
+
+	ConditionNode* node = new ConditionNode(td);
 	Node* prev_current = current;
 	this->current = node;
 
-	_assert(CST::TK_KW_IF);
-	INCPOS(1); // skip 'if'
 	node->raw = "if ";
 
-	_assert(CST::TK_PARENTHESIS_OPEN);
-	INCPOS(1); // skip '('
-	node->raw += "(";
+	try {
 
-	string expression = _parse_expression();
-	node->raw += expression;
+		_assert(CST::TK_PARENTHESIS_OPEN);
+		INCPOS(1); // skip '('
+		node->raw += "(";
 
-	_assert(CST::TK_PARENTHESIS_CLOSE);
-	INCPOS(1); // skip ')'
-	node->raw += ") ";
+		string expression = _parse_expression();
+		node->raw += expression;
 
-	StatementNode* then = _parse_statement();
-	if (then == nullptr) {
-		// TODO error
-	}
-	then->parent = node;
-	node->raw += then->raw;
+		_assert(CST::TK_PARENTHESIS_CLOSE);
+		INCPOS(1); // skip ')'
+		node->raw += ") ";
 
-	// optional else
-	if (_is_actual_token(CST::TK_KW_ELSE)) {
+		StatementNode* then = _parse_statement();
+		if (then == nullptr)
+			error("Failed to parse 'then' in IF statement.");
 
-		INCPOS(1); // skip 'else'
-		node->raw += " else ";
-		StatementNode* else_st = _parse_statement();
-		if (else_st == nullptr) {
-			// todo error
+		then->parent = node;
+		node->raw += then->raw;
+
+		// optional else
+		if (_is_actual_token(CST::TK_KW_ELSE)) {
+
+			INCPOS(1); // skip 'else'
+			node->raw += " else ";
+			StatementNode* else_st = _parse_statement();
+			if (else_st == nullptr)
+				error("Failed to parse 'else' in IF statement.");
+
+			else_st->parent = node;
+			node->raw += else_st->raw;
 		}
-		else_st->parent = node;
-		node->raw += else_st->raw;
-
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
+	// restore
 	this->current = prev_current;
 	return node;
 
@@ -1716,51 +2012,64 @@ CSharpParser::ConditionNode* CSharpParser::_parse_if_statement() {
 
 CSharpParser::TryNode* CSharpParser::_parse_try_statement()
 {
+
 	// try { ... } (catch { ... } (when ...)? )* (finally { ... })?
-	TryNode* node = new TryNode();
-	Node* prev_current = current;
-	this->current = node;
+	TD td = tokens[pos];
 
 	_assert(CST::TK_KW_TRY);
 	INCPOS(1); // skip 'try'
 
-	_assert(CST::TK_CURLY_BRACKET_OPEN);
+	TryNode* node = new TryNode(td);
+	Node* prev_current = current;
+	this->current = node;
 
-	BlockNode* try_block = _parse_block();
-	try_block->parent = node;
+	try {
+		_assert(CST::TK_CURLY_BRACKET_OPEN);
 
-	while (_is_actual_token(CST::TK_KW_CATCH)) {
+		BlockNode* try_block = _parse_block();
+		if (try_block == nullptr)
+			error("Failed to parse block in TRY statement.");
 
-		INCPOS(1); // skip 'catch'
-		_assert(CST::TK_PARENTHESIS_OPEN); INCPOS(1); // skip '('		
-		_parse_expression(); // ignore
-		_assert(CST::TK_PARENTHESIS_CLOSE); INCPOS(1); // skip ')'
+		try_block->parent = node;
 
-		// possible when
-		if (_is_actual_token(CST::TK_KW_WHEN)) {
+		while (_is_actual_token(CST::TK_KW_CATCH)) {
 
-			INCPOS(1); // skip 'when'
-			_assert(CST::TK_PARENTHESIS_OPEN); INCPOS(1); // skip '('
+			INCPOS(1); // skip 'catch'
+			_assert(CST::TK_PARENTHESIS_OPEN); INCPOS(1); // skip '('		
 			_parse_expression(); // ignore
 			_assert(CST::TK_PARENTHESIS_CLOSE); INCPOS(1); // skip ')'
+
+			// possible when
+			if (_is_actual_token(CST::TK_KW_WHEN)) {
+
+				INCPOS(1); // skip 'when'
+				_assert(CST::TK_PARENTHESIS_OPEN); INCPOS(1); // skip '('
+				_parse_expression(); // ignore
+				_assert(CST::TK_PARENTHESIS_CLOSE); INCPOS(1); // skip ')'
+			}
+
+			// block
+			_assert(CST::TK_CURLY_BRACKET_OPEN);
+
+			BlockNode* block = _parse_block();
+			node->blocks.push_back(block);
+			block->parent = node;
 		}
 
-		// block
-		_assert(CST::TK_CURLY_BRACKET_OPEN);
+		// possible finally
+		if (_is_actual_token(CST::TK_KW_FINALLY)) {
 
-		BlockNode* block = _parse_block();
-		node->blocks.push_back(block);
-		block->parent = node;
+			INCPOS(1); // skip 'finally'
+			_assert(CST::TK_CURLY_BRACKET_OPEN);
+			BlockNode* finally_block = _parse_block();
+			node->blocks.push_back(finally_block);
+			finally_block->parent = node;
+		}
 	}
-
-	// possible finally
-	if (_is_actual_token(CST::TK_KW_FINALLY)) {
-
-		INCPOS(1); // skip 'finally'
-		_assert(CST::TK_CURLY_BRACKET_OPEN);
-		BlockNode* finally_block = _parse_block();
-		node->blocks.push_back(finally_block);
-		finally_block->parent = node;
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
 	this->current = prev_current;
@@ -1770,40 +2079,51 @@ CSharpParser::TryNode* CSharpParser::_parse_try_statement()
 CSharpParser::ConditionNode* CSharpParser::_parse_switch_statement() {
 	
 	// switch (...) { (case ... (when ...)?)* default: ?}
-	ConditionNode* node = new ConditionNode();
-	Node* prev_current = current;
-	this->current = node;
 
+	TD td = tokens[pos];
 	_assert(CST::TK_KW_SWITCH);
 	INCPOS(1); // skip 'switch'
 
-	_assert(CST::TK_PARENTHESIS_OPEN);
-	INCPOS(1); // skip '('
+	ConditionNode* node = new ConditionNode(td);
+	Node* prev_current = current;
+	this->current = node;
 
-	_skip_until_token(CST::TK_PARENTHESIS_CLOSE);
-	INCPOS(1); // skip ')'
+	try {
+		_assert(CST::TK_PARENTHESIS_OPEN);
+		INCPOS(1); // skip '('
 
-	_assert(CST::TK_CURLY_BRACKET_OPEN);
+		_skip_until_token(CST::TK_PARENTHESIS_CLOSE);
+		INCPOS(1); // skip ')'
 
-	_skip_until_token(CST::TK_CURLY_BRACKET_CLOSE);
-	INCPOS(1); // skip '}'
+		_assert(CST::TK_CURLY_BRACKET_OPEN);
 
+		_skip_until_token(CST::TK_CURLY_BRACKET_CLOSE);
+		INCPOS(1); // skip '}'
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
+	}
+
+	// restore
 	this->current = prev_current;
 	return node;
 }
 
 CSharpParser::StatementNode* CSharpParser::_parse_property_definition() {
 
+	TD td = tokens[pos];
 	switch (GETTOKEN(0)) {
 
-	CASEATYPICAL(nullptr)
+	CASEATYPICAL
 
 	case CST::TK_OP_LAMBDA: {
 		INCPOS(1); // skip '=>'
 		return _parse_statement();
 	}
 	case CST::TK_SEMICOLON: {
-		StatementNode* node = new StatementNode();
+		StatementNode* node = new StatementNode(td);
 		node->raw = ";";
 		debug_info();
 		INCPOS(1);
@@ -1815,7 +2135,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_property_definition() {
 	}
 	default: {
 		_unexpeced_token_error();
-		INCPOS(1);
+		_escape();
 	}
 
 	}
@@ -1825,85 +2145,97 @@ CSharpParser::StatementNode* CSharpParser::_parse_property_definition() {
 
 CSharpParser::PropertyNode* CSharpParser::_parse_property(string name, string type)
 {
+	TD td = tokens[pos];
 	_assert(CST::TK_CURLY_BRACKET_OPEN);
 	INCPOS(1); // skip '{'
 
-	PropertyNode* node = new PropertyNode();
+	PropertyNode* node = new PropertyNode(td);
 	Node* prev_current = current;
 	this->current = node;
-	
+
 	node->name = name;
+	node->fullname = actual_fullname + "." + node->name;
 	node->type = type;
+	root->node_shortcuts.insert({ node->fullname,node });
 
-	// we don't know what is declared first: get or set
-	bool get_parsed = false;
-	bool set_parsed = false;
+	try {
+		// we don't know what is declared first: get or set
+		bool get_parsed = false;
+		bool set_parsed = false;
 
-	_parse_attributes();
-	_parse_modifiers();
+		_parse_attributes();
+		_parse_modifiers();
 
-	while (true) {
+		bool end = false;
+		while (!end) {
 
-		switch (GETTOKEN(0)) {
-		
-		CASEATYPICAL(nullptr)
+			switch (GETTOKEN(0)) {
 
-		case CST::TK_KW_GET: {
-			if (get_parsed) {
-				// todo error
-			} else {
-				INCPOS(1); // skip 'get'
-				node->get_modifiers = this->modifiers;
-				node->get_statement = _parse_property_definition();
-				get_parsed = true;
-				if (!set_parsed) {
-					// probably following definition of set
-					_parse_attributes();
-					_parse_modifiers();
+			CASEATYPICAL
+
+			case CST::TK_KW_GET: {
+					if (get_parsed) {
+						error("GET defined more then once while parsing property: " + name);
+					}
+					else {
+						INCPOS(1); // skip 'get'
+						node->get_modifiers = this->modifiers;
+						node->get_statement = _parse_property_definition();
+						get_parsed = true;
+						if (!set_parsed) {
+							// probably following definition of set
+							_parse_attributes();
+							_parse_modifiers();
+						}
+						break;
+					}
 				}
-				break;
-			}
-		}
-		case CST::TK_KW_SET: {
-			if (set_parsed) {
-				// todo error
-			}
-			else {
-				INCPOS(1); // skip 'set'
-				node->set_modifiers = this->modifiers;
-				this->kw_value_allowed = true;
-				node->set_statement = _parse_property_definition();
-				this->kw_value_allowed = false;
-				set_parsed = true;
-				if (!get_parsed) {
-					// probably following definition of get
-					_parse_attributes();
-					_parse_modifiers();
+			case CST::TK_KW_SET: {
+				if (set_parsed) {
+					error("SET defined more then once while parsing property: " + name);
 				}
-				break;
+				else {
+					INCPOS(1); // skip 'set'
+					node->set_modifiers = this->modifiers;
+					this->kw_value_allowed = true;
+					node->set_statement = _parse_property_definition();
+					this->kw_value_allowed = false;
+					set_parsed = true;
+					if (!get_parsed) {
+						// probably following definition of get
+						_parse_attributes();
+						_parse_modifiers();
+					}
+					break;
+				}
 			}
-		}
-		case CST::TK_CURLY_BRACKET_CLOSE: {
-			debug_info();
-			INCPOS(1); // skip '}'
+			case CST::TK_CURLY_BRACKET_CLOSE: {
+				debug_info();
+				INCPOS(1); // skip '}'
 
-			// C# 6 - possible initialization
-			if (GETTOKEN(0) == CST::TK_OP_ASSIGN) {
-				INCPOS(1); // skip '='
-				_parse_expression(); // ignore
-				INCPOS(1); // skip ';'
+				// C# 6 - possible initialization
+				if (GETTOKEN(0) == CST::TK_OP_ASSIGN) {
+					INCPOS(1); // skip '='
+					_parse_expression(); // ignore
+					INCPOS(1); // skip ';'
+				}
+
+				this->current = prev_current;
+				end = true; break;
 			}
-
-			this->current = prev_current;
-			return node;
-		}
-		default: {
-			_unexpeced_token_error();
-			INCPOS(1);
-		}
+			default: {
+				_unexpeced_token_error();
+			}
+			}
 		}
 	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
+	}
 
+	// restore
 	this->current = prev_current;
 	return node;
 }
@@ -1911,9 +2243,10 @@ CSharpParser::PropertyNode* CSharpParser::_parse_property(string name, string ty
 
 CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 
+	TD td = tokens[pos];
 	switch (GETTOKEN(0)) {
 
-	CASEATYPICAL(nullptr)
+	CASEATYPICAL
 
 	case CST::TK_CURLY_BRACKET_OPEN: {
 		BlockNode* node = _parse_block();
@@ -1922,7 +2255,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 
 	CASEBASETYPE {
 		VarNode *variable = _parse_declaration();
-		DeclarationNode* node = new DeclarationNode();
+		DeclarationNode* node = new DeclarationNode(td);
 		node->variable = variable;
 		INCPOS(1); // skip ';'
 
@@ -1932,7 +2265,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 	case CST::TK_KW_THIS:
 	case CST::TK_KW_BASE: {
 
-		StatementNode* node = new StatementNode();
+		StatementNode* node = new StatementNode(td);
 		string expr = _parse_expression();
 		_assert(CST::TK_SEMICOLON);
 		INCPOS(1); // skip ';'
@@ -1955,14 +2288,14 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 		// var declaration of custom type? (Foo x = new Foo();)
 		VarNode* variable = _parse_declaration();
 		if (variable != nullptr) {
-			DeclarationNode* node = new DeclarationNode();
+			DeclarationNode* node = new DeclarationNode(td);
 			node->variable = variable;
 			INCPOS(1); // skip ';'
 			return node;
 		}
 
 		pos = cur_pos; // reset
-		StatementNode* node = new StatementNode();
+		StatementNode* node = new StatementNode(td);
 
 		// label?
 		if (_is_actual_token(CST::TK_COLON)) {
@@ -2024,7 +2357,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 
 	// OTHER
 	case CST::TK_KW_AWAIT: {
-		StatementNode* node = new StatementNode();
+		StatementNode* node = new StatementNode(td);
 		node->raw += "await ";
 		string expr = _parse_expression();
 		node->raw += expr;
@@ -2041,14 +2374,13 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 		break;
 	}
 	case CST::TK_SEMICOLON: {
-		StatementNode* node = new StatementNode();
+		StatementNode* node = new StatementNode(td);
 		node->raw = ";";
 		INCPOS(1);
 		return node; // empty statement
 	}
 	default: {
 		_unexpeced_token_error();
-		INCPOS(1);
 	}
 
 	}
@@ -2058,93 +2390,106 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 
 CSharpParser::MethodNode* CSharpParser::_parse_method_declaration(string name, string return_type, bool interface_context) {
 
-	MethodNode* node = new MethodNode();
+	TD td = tokens[pos-2];
+	MethodNode* node = new MethodNode(td);
 	Node* prev_current = current;
 	MethodNode* prev_method = cur_method;
 	this->current = node;
 	this->cur_method = node;
 
+
 	node->name = name;
+	node->fullname = actual_fullname + "." + node->name;
 	node->return_type = return_type;
+	root->node_shortcuts.insert({ node->fullname,node });
 
-	_assert(CST::TK_PARENTHESIS_OPEN);
-	INCPOS(1);
+	try {
+		_assert(CST::TK_PARENTHESIS_OPEN);
+		INCPOS(1); // skip '('
 
-	// ARGUMETNS
-	VarNode* argument = new VarNode();
-	bool end = false;
-	while (!end) {
+		// ARGUMETNS
+		VarNode* argument = new VarNode(td);
+		bool end = false;
+		while (!end) {
+			debug_info();
+			switch (GETTOKEN(0)) {
+			case CST::TK_PARENTHESIS_CLOSE: {
+				if (argument->name == "") delete argument; // no argument
+				else node->arguments.push_back(argument);
+				end = true; INCPOS(1); break;
+			}
+			case CST::TK_COMMA: {
+				TD td = tokens[pos + 1];
+				node->arguments.push_back(argument);
+				argument = new VarNode(td);
+				INCPOS(1);
+				break;
+			}
+			case CST::TK_OP_ASSIGN: { // argumenty donyslne
+				INCPOS(1);
+				string val = _parse_expression();
+				argument->value = val;
+				break;
+			}
+			case CST::TK_KW_IN: {
+				argument->modifiers |= (int)CSM::MOD_IN;
+				INCPOS(1); // skip
+				break;
+			}
+			case CST::TK_KW_OUT: {
+				argument->modifiers |= (int)CSM::MOD_OUT;
+				INCPOS(1); // skip
+				break;
+			}
+			case CST::TK_KW_REF: {
+				argument->modifiers |= (int)CSM::MOD_REF;
+				INCPOS(1); // skip
+				break;
+			}
+			case CST::TK_KW_PARAMS: {
+				argument->modifiers |= (int)CSM::MOD_PARAMS;
+				INCPOS(1); // skip
+				break;
+			}
+
+			default: {
+
+				string type = _parse_type();
+				_assert(CST::TK_IDENTIFIER);
+				string name = TOKENDATA(0);
+				INCPOS(1);
+				argument->type = type;
+				argument->name = name;
+			}
+			}
+		}
+
+		// TODO GENERIC METHODS ( : where T is ... )
 		debug_info();
-		switch (GETTOKEN(0)) {
-		case CST::TK_PARENTHESIS_CLOSE: {
-			if (argument->name == "") delete argument; // no argument
-			else node->arguments.push_back(argument);
-			end = true; INCPOS(1); break;
+		if (_is_actual_token(CST::TK_COLON)) {
+			INCPOS(1); // skip ':'
+			if (_is_actual_token(CST::TK_KW_BASE)) {
+				INCPOS(1); // skip 'base'
+				_parse_method_invocation();
+			}
 		}
-		case CST::TK_COMMA: {
-			node->arguments.push_back(argument);
-			argument = new VarNode();
-			INCPOS(1);
-			break;
-		}
-		case CST::TK_OP_ASSIGN: { // argumenty donyslne
-			INCPOS(1);
-			string val = _parse_expression();
-			argument->value = val;
-			break;
-		}
-		case CST::TK_KW_IN: {
-			argument->modifiers |= (int)CSM::MOD_IN;
-			INCPOS(1); // skip
-			break;
-		}
-		case CST::TK_KW_OUT: {
-			argument->modifiers |= (int)CSM::MOD_OUT;
-			INCPOS(1); // skip
-			break;
-		}
-		case CST::TK_KW_REF: {
-			argument->modifiers |= (int)CSM::MOD_REF;
-			INCPOS(1); // skip
-			break;
-		}
-		case CST::TK_KW_PARAMS: {
-			argument->modifiers |= (int)CSM::MOD_PARAMS;
-			INCPOS(1); // skip
-			break;
-		}
-		
-		default: {
 
-			string type = _parse_type();
-			_assert(CST::TK_IDENTIFIER);
-			string name = TOKENDATA(0);
-			INCPOS(1);
-			argument->type = type;
-			argument->name = name;
+		// BODY
+		if (interface_context) {
+			_assert(CST::TK_SEMICOLON);
+			INCPOS(1); // skip ';'
 		}
+		else { // class context
+			node->body = _parse_block();
 		}
 	}
-
-	// TODO GENERIC METHODS ( : where T is ... )
-	debug_info();
-	if (_is_actual_token(CST::TK_COLON)) {
-		INCPOS(1); // skip ':'
-		if (_is_actual_token(CST::TK_KW_BASE)) {
-			INCPOS(1); // skip 'base'
-			_parse_method_invocation();
-		}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
-	// BODY
-	if (interface_context) {
-		_assert(CST::TK_SEMICOLON);
-		INCPOS(1); // skip ';'
-	}
-	else { // class context
-		node->body = _parse_block();
-	}
-
+	// restore
 	this->current = prev_current;
 	this->cur_method = prev_method;
 	return node;
@@ -2178,32 +2523,43 @@ string CSharpParser::_parse_method_invocation() {
 }
 
 CSharpParser::BlockNode* CSharpParser::_parse_block() {
-
+	
+	TD td = tokens[pos];
 	_assert(CST::TK_CURLY_BRACKET_OPEN);
 	INCPOS(1); // skip '{'
 
-	BlockNode* node = new BlockNode();
+	BlockNode* node = new BlockNode(td);
 	Node* prev_current = current;
 	BlockNode* prev_block = cur_block;
 	this->current = node;
 	this->cur_block = node;
 
-	while (!_is_actual_token(CST::TK_CURLY_BRACKET_CLOSE)) {
+	try {
 
-		StatementNode* statement = _parse_statement();
-		if (statement == nullptr) {
-			error("Failed to parse statement.");
-			break;
+		while (!_is_actual_token(CST::TK_CURLY_BRACKET_CLOSE)) {
+
+			StatementNode* statement = _parse_statement();
+			if (statement == nullptr) {
+				error("Failed to parse statement.");
+				_escape();
+				break;
+			}
+			statement->parent = node;
+
+			// dodaj na koniec listy statementow
+			statement->prev = node->last_node;
+			node->last_node = statement;
 		}
-		statement->parent = node;
 
-		// dodaj na koniec listy statementow
-		statement->prev = node->last_node;
-		node->last_node = statement;
+		INCPOS(1); // skip '}'
+	}
+	catch (CSharpParserException &e) {
+		_escape();
+		delete node;
+		node = nullptr;
 	}
 
-	INCPOS(1); // skip '}'
-
+	// restore
 	this->current = prev_current;
 	this->cur_block = prev_block;
 	return node;
@@ -2329,4 +2685,45 @@ vector<CSharpParser::MethodNode*> CSharpParser::Node::get_methods()
 vector<CSharpParser::VarNode*> CSharpParser::Node::get_vars()
 {
 	return vector<VarNode*>();
+}
+
+
+// escape ustawi kursor zaraz ZA odpowiedni '}'
+void CSharpParser::_escape() {
+
+	if (cur_block != nullptr)          _skip_until_end_of_block();
+	else if (cur_class != nullptr)     _skip_until_end_of_class();
+	else if (cur_namespace != nullptr) _skip_until_end_of_namespace();
+
+}
+
+void CSharpParser::_skip_until_end_of_block() {
+
+	if (cur_block == nullptr) return;
+	int dest_depth = cur_block->creator.depth;
+	while (pos < len && tokens[pos].depth > dest_depth) pos++;
+	pos++; // skip '}'
+}
+
+void CSharpParser::_skip_until_end_of_class() {
+
+	if (cur_class == nullptr) return;
+	int dest_depth = cur_class->creator.depth;
+	while (pos < len && tokens[pos].depth > dest_depth) pos++;
+	pos++; // skip '}'
+}
+
+void CSharpParser::_skip_until_end_of_namespace() {
+
+	if (cur_namespace == nullptr) return;
+	int dest_depth = cur_namespace->creator.depth;
+	while (pos < len && tokens[pos].depth > dest_depth) pos++;
+	pos++; // skip '}'
+}
+
+void CSharpParser::_skip_until_next_line() {
+
+	int cur_line = tokens[pos].line;
+	while (pos < len && tokens[pos].line == cur_line) pos++;
+
 }

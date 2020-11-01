@@ -7,6 +7,7 @@ using CST = CSharpLexer::Token;
 #define GETCHAR(ofs) ((ofs + pos) >= len ? 0 : code[ofs+pos])
 #define INCPOS(ammount) { pos += ammount; column += ammount; } // warning - no line skipping
 
+set<string> CSharpLexer::keywords = set<string> ();
 const char* CSharpLexer::token_names[(int)CST::TK_MAX] = {
 
 	"Empty",
@@ -63,6 +64,7 @@ const char* CSharpLexer::token_names[(int)CST::TK_MAX] = {
 	"CURSOR"
 };
 
+
 #include <iostream>
 
 void CSharpLexer::clear_state() {
@@ -104,6 +106,11 @@ CSharpLexer::CSharpLexer(string code) {
 
 vector<CSharpLexer::TokenData> CSharpLexer::get_tokens() const {
 	return tokens;
+}
+
+set<string> CSharpLexer::get_identifiers() const
+{
+	return identifiers;
 }
 
 
@@ -288,11 +295,18 @@ void CSharpLexer::_tokenize() {
 					Token type = Token(CST::TK_EMPTY);
 					if (_read_special_char(type)) {
 
-						// DEPTH
-						if (type == CST::TK_CURLY_BRACKET_OPEN) depth++;
-						else if (type == CST::TK_CURLY_BRACKET_CLOSE) depth--;
+						if (type == CST::TK_CURLY_BRACKET_OPEN) {
+							_make_token(type);
+							depth++;
+						}
+						else if (type == CST::TK_CURLY_BRACKET_CLOSE) {
+							depth--;
+							_make_token(type);
+						}
+						else {
+							_make_token(type);
+						}
 
-						_make_token(type);
 					}
 					else {
 						_make_token(CST::TK_ERROR);
@@ -697,6 +711,7 @@ void CSharpLexer::_make_token(const Token p_type, const string& data) {
 }
 
 void CSharpLexer::_make_identifier(const string& identifier) {
+	this->identifiers.insert(identifier);
 	_make_token(CST::TK_IDENTIFIER, identifier);
 }
 
@@ -810,4 +825,23 @@ void CSharpLexer::print_tokens() const {
 		}
 		cout << endl;
 	}
+}
+
+
+
+set<string> CSharpLexer::get_keywords() {
+
+	// INIT
+	if (CSharpLexer::keywords.size() < 0) {
+
+		for (int i = (int)CSharpLexer::RESERVED_KEYWORDS_BEGIN;
+			i <= (int)CSharpLexer::RESERVED_KEYWORDS_END; i++)
+				keywords.insert(CSharpLexer::token_names[i]);
+
+		for (int i = (int)CSharpLexer::CONTEXT_KEYWORDS_BEGIN;
+			i <= (int)CSharpLexer::CONTEXT_KEYWORDS_END; i++)
+				keywords.insert(CSharpLexer::token_names[i]);
+	}
+
+	return keywords;
 }

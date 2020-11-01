@@ -1,4 +1,10 @@
 #include "csharp_context.h"
+
+#include <fstream>
+#include <string>
+#include <regex>
+#include <algorithm>
+
 CSharpContext* CSharpContext::_instance = nullptr;
 
 // update state oznacza, ze poproszono o sparsowanie kodu
@@ -9,16 +15,23 @@ void CSharpContext::update_state(string &code, string &filename) {
 	CSharpParser parser(code);
 	CSP::FileNode* node = parser.parse();
 	node->name = filename;
+	node->identifiers = parser.identifiers;
 	
 	files.insert({ filename,node });
 	ctx = parser.cursor;
 
 	// copy ptrs
 	completion_type = parser.completion_type;
-	ctx_namespace = parser.completion_namespace;
-	ctx_class = parser.completion_class;
-	ctx_method = parser.completion_method;
-	ctx_block = parser.completion_block;
+	ctx_namespace   = parser.completion_namespace;
+	ctx_class       = parser.completion_class;
+	ctx_method      = parser.completion_method;
+	ctx_block       = parser.completion_block;
+
+	ctx_column = parser.cursor_column;
+	ctx_line   = parser.cursor_line;
+
+	completion_info_str = parser.completion_info_str;
+	completion_info_int = parser.completion_info_int;
 
 	ctx_file = node;
 }
@@ -32,39 +45,77 @@ vector<CSP::NamespaceNode*> CSharpContext::get_namespaces()
 {
 	// all declared namespaces
 	vector<CSP::NamespaceNode*> res;
-	for (auto& file : files)
+	for (auto f : files)
+		for (CSP::NamespaceNode *n : f.second->namespaces)
+			res.push_back(n);
 
 	return res;
 }
 
-vector<CSP::ClassNode*> CSharpContext::get_classes()
-{
-	return vector<CSP::ClassNode*>();
+vector<CSP::ClassNode*> CSharpContext::get_visible_classes() {
+
+	vector<CSP::ClassNode*> res;
+
+	// all classes in current namespace
+	for (auto f : files)
+		for (CSP::NamespaceNode *n : f.second->namespaces)
+			if (n->name == ctx_namespace->name)
+				for (CSP::ClassNode *c : n->classes)
+					res.push_back(c);
+
+	// all classes from namespaces used in current file
+	// TODO
+
+	return res;
 }
 
-vector<CSP::StructNode*> CSharpContext::get_structs()
+vector<CSP::StructNode*> CSharpContext::get_visible_structs()
 {
+	// TODO
 	return vector<CSP::StructNode*>();
 }
 
-vector<CSP::MethodNode*> CSharpContext::get_methods()
+vector<CSP::MethodNode*> CSharpContext::get_visible_methods()
 {
-	return vector<CSP::MethodNode*>();
+	vector<CSP::MethodNode*> res;
+
+	// all methods declared in current class
+	for (CSP::MethodNode* m : ctx_class->methods)
+		res.push_back(m);
+
+	// all methods from using static
+	// TODO
+
+	return res;
 }
 
-vector<CSP::VarNode*> CSharpContext::get_vars()
+vector<CSP::VarNode*> CSharpContext::get_visible_vars()
 {
 	return vector<CSP::VarNode*>();
 }
 
-vector<CSP::PropertyNode*> CSharpContext::get_properties()
+vector<CSP::PropertyNode*> CSharpContext::get_visible_properties()
 {
 	return vector<CSP::PropertyNode*>();
 }
 
-vector<CSP::InterfaceNode*> CSharpContext::get_interfaces()
+vector<CSP::InterfaceNode*> CSharpContext::get_visible_interfaces()
 {
 	return vector<CSP::InterfaceNode*>();
+}
+
+void CSharpContext::print_shortcuts()
+{
+	cout << " ----- --------- ----- " << endl;
+	cout << " ----- Shortcuts -----" << endl;
+	for (auto f : files) {
+		cout << "File: " << f.second->name << endl;
+		for (auto shortcut : f.second->node_shortcuts) {
+			cout << shortcut.first << endl;
+		}
+	}
+
+
 }
 
 void CSharpContext::print() {
@@ -72,6 +123,11 @@ void CSharpContext::print() {
 	for (auto f : files)
 		f.second->print();
 
+	if (ctx != nullptr) {
+		cout << "Found cursor at: " << ctx_line << " " << ctx_column << endl;
+		cout << "Completion type is: " << CSharpParser::completion_type_name(completion_type) << endl;
+		cout << "Current expression is: " << ctx_expression << endl;
+	}
 }
 
 CSharpContext* CSharpContext::instance() {
@@ -80,6 +136,145 @@ CSharpContext* CSharpContext::instance() {
 	return _instance;
 }
 
-CSharpContext::CSharpContext() {}
+CSharpContext::CSharpContext() {
+
+	//_load_xml_assembly(R"(C:\Users\ketra\Desktop\Godot322\godot\bin\GodotSharp\Api\Release\GodotSharp.xml)");
+
+}
+
+bool CSharpContext::_is_assembly_member_line(const string &s, string &res) {
+
+	int pos = 0;
+	while (s[pos] == ' ') pos++;
+
+	string begining = "<member name=\"";
+	for (int i=0; i<14; i++) {
+		if (s[pos] != begining[i]) 
+			return false;
+		pos++;
+	}
+
+	res = "";
+	for (; s[pos] != '\"'; pos++)
+		res += s[pos];
+
+	return true;
+}
+
+void CSharpContext::_load_xml_assembly(string path)
+{
+	ifstream file(path);
+	if (!file.is_open()) {
+		exit(1); // TODO
+	}
+
+	string line;
+	string res;
+
+	while (!file.eof()) {
+
+		line = "";
+		getline(file, line);
+
+		if (_is_assembly_member_line(line,res)) {
+			if      (res[0] == 'T') assembly_info_t.push_back(res);
+			else if (res[0] == 'P') assembly_info_p.push_back(res);
+			else if (res[0] == 'M') assembly_info_m.push_back(res);
+			else if (res[0] == 'F') assembly_info_f.push_back(res);
+		}
+
+		
+
+	}
+}
 
 CSharpContext::~CSharpContext() {}
+
+vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
+
+	vector<pair<Option, string>> options;
+
+	switch (completion_type) {
+
+	case (CSharpParser::CompletionType::COMPLETION_NONE): {
+		// empty list
+		break;
+	}
+	case (CSharpParser::CompletionType::COMPLETION_TYPE): {
+		// TODO
+		break;
+	}
+	case (CSharpParser::CompletionType::COMPLETION_MEMBER): {
+
+		break;
+	}
+	case (CSharpParser::CompletionType::COMPLETION_CALL_ARGUMENTS): {
+		
+		// creates list of signatures of functions which fit the name
+		string func_name = completion_info_str;
+		int cur_arg = completion_info_int;
+
+		// TODO get functions by name
+		// TODO add signature of function
+		break;
+	}
+	case (CSharpParser::CompletionType::COMPLETION_LABEL): {
+
+		break;
+	}
+	case (CSharpParser::CompletionType::COMPLETION_VIRTUAL_FUNC): {
+
+		break;
+	}
+	case (CSharpParser::CompletionType::COMPLETION_ASSIGN): {
+
+		break;
+	}
+	case (CSharpParser::CompletionType::COMPLETION_IDENTIFIER): {
+
+		set<string> identifiers; // destination of merging
+
+		set<string> keywords = CSharpLexer::get_keywords();
+		set<string> ctx_file_identifiers = ctx_file->identifiers;
+		
+		my_merge(identifiers, keywords);
+		my_merge(identifiers, ctx_file_identifiers);
+
+		for (auto f : files) {
+			set<string> s = f.second->get_external_identifiers();
+			my_merge(identifiers, s);
+		}
+		
+		for (auto v : identifiers) {
+			options.push_back({ Option::KIND_PLAIN_TEXT, v });
+		}
+
+		break;
+	}
+
+	}
+
+
+	return options;
+}
+
+vector<string> CSharpContext::get_visible_types() {
+	return vector<string>();
+}
+vector<string> CSharpContext::get_function_signatures(string function_name) {
+	return vector<string>();
+
+}
+vector<string> CSharpContext::get_visible_labels() {
+	return vector<string>();
+
+}
+
+
+// put s2 values into s1
+void CSharpContext::my_merge(set<string> &s1, const set<string> &s2) {
+
+	for (auto v : s2)
+		s1.insert(v);
+
+}

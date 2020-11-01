@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include <stack>
+#include <set>
 
 using namespace std;
 
@@ -80,9 +81,13 @@ public:
 	};
 
 	static const char* token_names[(int)Token::TK_MAX];
-
+	static set<string> get_keywords();
+	static set<string> keywords;
 
 private:
+
+	set<string> identifiers;     // wszystkie mozliwe identyfikatory znalezione w tym pliku
+
 	vector<TokenData> tokens;    // generated tokens
 	string code;                 // code to analyze
 	int len;                     // length of the code
@@ -107,6 +112,7 @@ public:
 	void clear_state();        // clear state of current object (prepare to retokenize)
 	void print_tokens() const;
 	vector<TokenData> get_tokens() const;
+	set<string> get_identifiers() const;
 
 	static bool is_text_char(char c);     // a-z A-Z 0-9 _
 	static bool is_number(char c);        // 0-9
@@ -145,6 +151,7 @@ private:
 	static const Token OPS_BEGIN = Token::TK_OP_ADD;
 	static const Token OPS_END = Token::TK_OP_ASSIGN_RIGHT_SHIFT;
 	
+
 };
 
 

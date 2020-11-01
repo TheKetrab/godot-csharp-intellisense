@@ -10,7 +10,7 @@
 using namespace std;
 int main() {
 
-	string filename = "script4.cs";
+	string filename = "script1.cs";
 
 	ifstream file;
 	file.open(filename);
@@ -50,5 +50,7 @@ int main() {
 	CSharpContext::instance()->print();
 
 	cout << endl << endl << endl;
+
+	CSharpContext::instance()->print_shortcuts();
 	return 0;
 }

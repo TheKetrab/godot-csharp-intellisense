@@ -5,10 +5,13 @@
 #include "csharp_lexer.h"
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 // klasa nie ma parsowac i wykonywac, tylko okreslic kontekst
 // czyli wystarczy, ze zbudujemy taka strukture listowo-drzewiasta i okreslimy co widac
 // parser przechowuje sparsowane przez siebie pliki w formie FileNode
+
+// TODO zapamietaj glebokosc!
 
 // Node
 //    NamespaceNode
@@ -32,12 +35,22 @@
 //	     UsingNode
 
 // todo: File powinien miec vector<string> labels - zeby w razie goto intellisense podpowiadalo widoczne etykiety
-
+using TD = CSharpLexer::TokenData;
 using namespace std;
 #include <map>
 #include <iostream>
 #include <unordered_map>
+#include <exception>
 const int TAB = 2;
+
+struct CSharpParserException : public exception {
+	string msg;
+	CSharpParserException(string msg) : msg(msg) {}
+	const char* what() const throw () {
+		return msg.c_str();
+	}
+};
+
 
 class CSharpParser {
 
@@ -71,7 +84,8 @@ public:
 		COMPLETION_CALL_ARGUMENTS,  // w funkcji -> trzeba sprawdzic typ
 		COMPLETION_LABEL,           // po dwukropku w jump (goto: )
 		COMPLETION_VIRTUAL_FUNC,    // przy napisaniu override
-		COMPLETION_ASSIGN           // po '='
+		COMPLETION_ASSIGN,          // po '='
+		COMPLETION_IDENTIFIER       // trzeba dokonczyc jakies slowo
 	};
 
 	// abstract
@@ -81,19 +95,19 @@ public:
 			UNKNOWN, FILE, NAMESPACE, ENUM, INTERFACE, STRUCT, CLASS, METHOD, PROPERTY, VAR, STATEMENT, LAMBDA
 		};
 
-		int line = 0;
-		int column = 0;
 		int modifiers = 0;
 		vector<string> attributes;
 		string name;
+		string fullname; // eg. Namespace1.Namespace2.ClassX.MethodY
 		Type node_type;
+		CSharpLexer::TokenData creator;
 
 		Node* parent = nullptr;
 
-		Node(Type t) : node_type(t) {}
-		Node(const CSharpLexer::TokenData td) {
-			this->line = td.line;
-			this->column = td.column;
+		Node() {}
+		Node(Type t, TD td) {
+			this->creator = td;
+			this->node_type = t;
 		}
 
 		virtual void print(int indent = 0) const = 0;
@@ -135,19 +149,25 @@ public:
 		vector<EnumNode*> enums;
 		vector<DelegateNode*> delegates;
 
-		NamespaceNode() : Node(Type::NAMESPACE) {}
+		NamespaceNode(TD td) : Node(Type::NAMESPACE,td) {}
 		void print(int indent = 0) const override;
 	};
 
 	// filenode jest jak namespace global, tylko ze ma dodatkowe funkcjonalnosci (to co widac TYLKO w tym pliku)
 	struct FileNode : public NamespaceNode {
 
+		// dzieki temu mozna szybko dostac po nazwie (fullname) odpowiedni node
+		map<string, Node*> node_shortcuts;
+		set<string> identifiers;
+
 		vector<string> using_directives;
 		vector<string> using_static_direcvites;
 		vector<string> directives;
 		vector<string> labels;
 
-		FileNode() : NamespaceNode() { node_type = Type::FILE; }
+		set<string> get_external_identifiers();
+
+		FileNode() : NamespaceNode(CSharpLexer::TokenData()) { node_type = Type::FILE; }
 		void print(int indent = 0) const override;
 	};
 
@@ -156,7 +176,7 @@ public:
 		string type = "int"; // domyslnie int
 		vector<string> members;
 
-		EnumNode() : Node(Type::ENUM) {}
+		EnumNode(TD td) : Node(Type::ENUM, td) {}
 		void print(int indent = 0) const override;
 	};
 
@@ -166,7 +186,7 @@ public:
 		bool is_generic = false;
 		vector<string> generic_declarations;
 		string constraints;
-		GenericNode(Type t) : Node(t) {}
+		GenericNode(Type t, TD td) : Node(t,td) {}
 	};
 
 	struct InterfaceNode : public GenericNode {
@@ -175,7 +195,7 @@ public:
 		vector<MethodNode*> methods;
 		vector<PropertyNode*> properties;
 
-		InterfaceNode() : GenericNode(Type::INTERFACE) {}
+		InterfaceNode(TD td) : GenericNode(Type::INTERFACE,td) {}
 		void print(int indent = 0) const override;
 	};
 
@@ -191,13 +211,13 @@ public:
 		vector<PropertyNode*> properties;
 		vector<DelegateNode*> delegates;
 
-		StructNode() : GenericNode(Type::STRUCT) {}
+		StructNode(TD td) : GenericNode(Type::STRUCT,td) {}
 		void print(int indent = 0) const override;
 	};
 
 	struct ClassNode : public StructNode {
 
-		ClassNode() { node_type = Type::CLASS; }
+		ClassNode(TD td) : StructNode(td) { node_type = Type::CLASS; }
 		void print(int indent = 0) const override;
 	};
 
@@ -207,7 +227,7 @@ public:
 		vector<VarNode*> arguments;
 		StatementNode* body = nullptr;
 
-		MethodNode() : GenericNode(Type::METHOD) {}
+		MethodNode(TD td) : GenericNode(Type::METHOD,td) {}
 		void print(int indent = 0) const override;
 	};
 
@@ -222,9 +242,9 @@ public:
 
 		void print(int indent = 0) const override;
 
-		VarNode() : Node(Type::VAR) { }
-		VarNode(string name, string type) 
-			: Node(Type::VAR)
+		VarNode(TD td) : Node(Type::VAR,td) { }
+		VarNode(string name, string type, TD td)
+			: Node(Type::VAR,td)
 		{
 			this->name = name;
 			this->type = type;
@@ -238,7 +258,7 @@ public:
 		StatementNode* get_statement = nullptr;
 		StatementNode* set_statement = nullptr;
 
-		PropertyNode() { node_type = Type::PROPERTY; }
+		PropertyNode(TD td) : VarNode(td) { node_type = Type::PROPERTY; }
 		void print(int indent = 0) const override;
 	};
 
@@ -250,21 +270,23 @@ public:
 		string raw;
 		StatementNode* prev = nullptr; // polaczone w liste, zeby mozna bylo przejsc do tylu i poszukac deklaracji
 
-		StatementNode() : Node(Type::STATEMENT) {}
+		StatementNode(TD td) : Node(Type::STATEMENT,td) {}
 		void print(int indent = 0) const override;
 	};
 
 	struct ExpressionNode : public StatementNode {
 
+		ExpressionNode(TD td) : StatementNode(td) {}
 		string expression;
 	};
 
 	struct BlockNode : public StatementNode {
+		BlockNode(TD td) : StatementNode(td) {}
 		StatementNode* last_node = nullptr;
 	};
 
 	struct ConditionNode : public StatementNode {
-
+		ConditionNode(TD td) : StatementNode(td) {}
 	};
 
 	struct LoopNode : public StatementNode {
@@ -273,6 +295,7 @@ public:
 			UNKNOWN, DO, FOR, FOREACH, WHILE
 		};
 
+		LoopNode(TD td) : StatementNode(td) {}
 		LoopNode::Type loop_type = Type::UNKNOWN;
 		VarNode* local_variable = nullptr;
 		StatementNode* body = nullptr;
@@ -280,6 +303,7 @@ public:
 
 	struct DeclarationNode : public StatementNode {
 
+		DeclarationNode(TD td) : StatementNode(td) {}
 		VarNode* variable;
 	};
 
@@ -289,16 +313,19 @@ public:
 			UNKNOWN, BREAK, CONTINUE, GOTO, RETURN, YIELD, THROW
 		};
 
+		JumpNode(TD td) : StatementNode(td) {}
 		JumpNode::Type jump_type = Type::UNKNOWN;
 	};
 
 	struct TryNode : public StatementNode {
 
+		TryNode(TD td) : StatementNode(td) {}
 		vector<StatementNode*> blocks; // try, catch blocks and finally
 	};
 
 	struct UsingNode : public StatementNode {
 
+		UsingNode(TD td) : StatementNode(td) {}
 		VarNode* local_variable = nullptr;
 		StatementNode* body = nullptr;
 	};
@@ -332,14 +359,20 @@ public:
 	// CLASS MEMBERS
 private:
 
+	FileNode* root;
+
 	// where is the parser now
 	NamespaceNode* cur_namespace;
 	ClassNode* cur_class;
 	MethodNode* cur_method;
 	BlockNode* cur_block;
+	string cur_expression;
 
 	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
 	Node* cursor;				// wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
+
+	int cursor_column = 0;
+	int cursor_line = 0;
 
 	int pos;                    // position of current token
 	int len;                    // total amount of tokens
@@ -347,16 +380,21 @@ private:
 
 	vector<CSharpLexer::TokenData> tokens; // tokens of being parsed file
 	vector<string> attributes;
+	set<string> identifiers;
+
+	string actual_fullname;
 
 	bool kw_value_allowed = false; // enable only when parse property->set
 
 	// completion info
+	string completion_info_str;
+	int completion_info_int = 0;
 	CompletionType completion_type;
 	NamespaceNode *completion_namespace;
 	ClassNode *completion_class;
 	MethodNode *completion_method;
 	BlockNode *completion_block;
-
+	string completion_expression;
 
 	// ----- ----- -----
 	// CLASS METHODS
@@ -378,7 +416,7 @@ private:
 	void _unexpeced_token_error() const;
 
 	bool _is_actual_token(CSharpLexer::Token tk, bool assert = false);
-	bool _assert(CSharpLexer::Token tk); // make sure what is curtok
+	void _assert(CSharpLexer::Token tk); // make sure what is curtok
 
 	NamespaceNode* _parse_namespace(bool global);
 	FileNode* _parse_file();
@@ -418,9 +456,13 @@ private:
 	void _apply_modifiers(Node* node);
 	void _apply_attributes(Node* node);
 	
+	CompletionType _deduce_completion_type();
+	string _deduce_owner_type(int from_pos);
+	int get_position_of_begining(int cur_pos);
+
+
 	// skipuje az do danego tokena, ktory jest na takim poziomie zaglebienia parsera w blokach (depth)
 	void _skip_until_token(CSharpLexer::Token tk);
-
 
 public:
 	
@@ -439,8 +481,19 @@ public:
 	} depth;
 
 
-
+	static string completion_type_name(CompletionType type);
 	friend class CSharpContext;
+
+	void _found_cursor();
+
+	void _escape();
+	void _skip_until_end_of_block();
+	void _skip_until_end_of_class();
+	void _skip_until_end_of_namespace();
+	void _skip_until_next_line();
+
+
+
 };
 
 
