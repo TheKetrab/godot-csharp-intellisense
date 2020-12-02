@@ -71,7 +71,6 @@ public:
 		TK_MAX
 	};
 
-
 	struct TokenData {
 		Token type;
 		string data;
@@ -150,7 +149,6 @@ private:
 	static const Token CONTEXT_KEYWORDS_END = Token::TK_KW_YIELD;
 	static const Token OPS_BEGIN = Token::TK_OP_ADD;
 	static const Token OPS_END = Token::TK_OP_ASSIGN_RIGHT_SHIFT;
-	
 
 };
 

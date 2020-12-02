@@ -12,7 +12,6 @@ using namespace std;
 
 void CSharpParser::_found_cursor() {
 	cursor = current;
-	completion_expression = cur_expression;
 	cursor_column = TOKENINFO(0).column;
 	cursor_line = TOKENINFO(0).line;
 	completion_type = _deduce_completion_type();
@@ -20,6 +19,13 @@ void CSharpParser::_found_cursor() {
 	completion_class = cur_class;
 	completion_method = cur_method;
 	completion_block = cur_block;
+
+	if (cur_expression == "" && cur_type == "")
+		completion_expression = prev_expression;
+	else
+		completion_expression = cur_expression + cur_type;
+
+
 }
 
 #define CASEATYPICAL \
@@ -204,6 +210,8 @@ bool CSharpParser::_is_actual_token(CSharpLexer::Token tk, bool assert) {
 				msg += CSharpLexer::token_names[(int)tk];
 				msg += " but current token is: ";
 				msg += (token == CST::TK_IDENTIFIER) ? TOKENDATA(0) : CSharpLexer::token_names[(int)token];
+				msg += " at pos: ";
+				msg += to_string(pos);
 				error(msg);
 			}
 			return false;
@@ -432,11 +440,8 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 	NamespaceNode* prev_namespace = cur_namespace;
 	this->current = node;
 	this->cur_namespace = node;
-	string prev_fullname = actual_fullname;
-	this->actual_fullname += (actual_fullname == "") ? name : ("." + name);
 	node->name = name;
-	node->fullname = actual_fullname;
-	root->node_shortcuts.insert({ node->fullname,node });
+	root->node_shortcuts.insert({ node->fullname(),node });
 
 	try {
 		_assert(CST::TK_CURLY_BRACKET_OPEN);
@@ -452,7 +457,6 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 	// restore state
 	this->current = prev_current;
 	this->cur_namespace = prev_namespace;
-	this->actual_fullname = prev_fullname;
 	return node;
 
 }
@@ -490,6 +494,11 @@ void CSharpParser::FileNode::print(int indent) const {
 	if (classes.size() > 0)    for (ClassNode* x : classes)        x->print(indent + TAB);
 	if (structures.size() > 0) for (StructNode* x : structures)    x->print(indent + TAB);
 
+}
+
+string CSharpParser::FileNode::fullname() const
+{
+	return ""; // empty
 }
 
 CSharpParser::FileNode * CSharpParser::_parse_file()
@@ -691,11 +700,8 @@ CSharpParser::ClassNode* CSharpParser::_parse_class() {
 	this->current = node;
 	this->cur_class = node;
 
-	string prev_fullname = actual_fullname;
 	node->name = TOKENDATA(0);
-	this->actual_fullname += (actual_fullname == "") ? node->name : ("." + node->name);
-	node->fullname = actual_fullname;
-	root->node_shortcuts.insert({ node->fullname,node });
+	root->node_shortcuts.insert({ node->fullname(),node });
 
 	INCPOS(1); // skip name
 
@@ -733,7 +739,6 @@ CSharpParser::ClassNode* CSharpParser::_parse_class() {
 	// restore state
 	this->current = prev_current;
 	this->cur_class = prev_class;
-	this->actual_fullname = prev_fullname;
 	return node;
 }
 
@@ -853,15 +858,14 @@ string CSharpParser::_parse_new() {
 }
 
 // parse expression -> (or assignment: x &= 10 is good as well)
-string CSharpParser::_parse_expression() {
+string CSharpParser::_parse_expression(bool inside, CST opener) {
 
 	// https://docs.microsoft.com/en-us/dotnet/csharp/language-reference/language-specification/expressions
 	// po wyjsciu z funkcji karetka ma byc nad tokenem zaraz ZA wyrazeniem
 	// try untill ')' at the same depth or ',' or ';'
 
-	int parenthesis_depth = 0;
-	int bracket_depth = 0;
-	string prev_expression = cur_expression;
+	prev_expression = cur_expression;
+	//string prev_expr = cur_expression;
 	cur_expression = "";
 	bool end = false;
 	while (!end) {
@@ -901,27 +905,37 @@ string CSharpParser::_parse_expression() {
 
 		// end if
 		case CST::TK_COMMA: {
-			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
-			else { cur_expression += ","; INCPOS(1); }
+			end = true;
+			//if (!inside) end = true;
+			//else { cur_expression += ","; INCPOS(1); }
 			break;
 		}
 		case CST::TK_SEMICOLON: {
-			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
-			else { }// TODO ERROR
+			if (!inside) end = true;
+			else { _unexpeced_token_error(); }
 			break;
 		}
 		case CST::TK_PARENTHESIS_CLOSE: {
-			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
-			else { parenthesis_depth--; cur_expression += ")"; INCPOS(1); }
+			if (opener == CST::TK_PARENTHESIS_OPEN) end = true;
+			else { cur_expression += ")"; INCPOS(1); }
 			break;
 		}
 
 		// function invokation
 		case CST::TK_PARENTHESIS_OPEN: {
-			parenthesis_depth++;
 			cur_expression += "(";
 			INCPOS(1);
-			cur_expression += _parse_expression(); // inside
+			while (true) {
+				string e = prev_expression;
+				cur_expression += _parse_expression(true, CST::TK_PARENTHESIS_OPEN); // inside
+				prev_expression = e;
+				if (_is_actual_token(CST::TK_PARENTHESIS_CLOSE)) break;
+				else if (_is_actual_token(CST::TK_COMMA)) { cur_expression += ","; INCPOS(1); }
+				else _unexpeced_token_error();
+			}
+			_assert(CST::TK_PARENTHESIS_CLOSE);
+			cur_expression += ")";
+			INCPOS(1);
 			break;
 		}
 
@@ -958,16 +972,26 @@ string CSharpParser::_parse_expression() {
 			}
 		}
 		case CST::TK_PERIOD: { cur_expression += "."; INCPOS(1); break; }
-		case CST::TK_BRACKET_OPEN: { bracket_depth++; INCPOS(1); cur_expression += "[" + _parse_expression(); break; }
+		case CST::TK_BRACKET_OPEN: {
+			cur_expression += "[";
+			INCPOS(1);
+			string e = prev_expression;
+			cur_expression += _parse_expression(true, CST::TK_BRACKET_OPEN); // inside
+			prev_expression = e;
+			_assert(CST::TK_BRACKET_CLOSE);
+			cur_expression += "]";
+			INCPOS(1);
+			break;
+		}
 
 		case CST::TK_BRACKET_CLOSE: {
-			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
-			else { bracket_depth--; cur_expression += "]"; INCPOS(1); }
+			if (opener == CST::TK_BRACKET_OPEN) end = true;
+			else { cur_expression += ")"; INCPOS(1); }
 			break;
 		}
 		case CST::TK_CURLY_BRACKET_CLOSE: { // for initialization block: var x = new { a = EXPR };
-			if (parenthesis_depth == 0 && bracket_depth == 0) end = true;
-			else _unexpeced_token_error();
+			if (opener == CST::TK_CURLY_BRACKET_OPEN) end = true;
+			else { cur_expression += "}"; INCPOS(1); }
 			break;
 		}
 		case CST::TK_CURLY_BRACKET_OPEN: {
@@ -975,7 +999,6 @@ string CSharpParser::_parse_expression() {
 			cur_expression += "{ ... }";
 			break;
 		}
-
 
 		default: {
 
@@ -1015,6 +1038,8 @@ string CSharpParser::_parse_expression() {
 
 	string res = cur_expression;
 	cur_expression = prev_expression;
+	//cur_expression = prev_expr;
+	prev_expression = "";
 	return res;
 	
 }
@@ -1033,8 +1058,7 @@ CSharpParser::EnumNode* CSharpParser::_parse_enum() {
 	Node* prev_current = current;
 	this->current = node;
 	node->name = TOKENDATA(0);
-	node->fullname = (actual_fullname == "") ? node->name : ("." + node->name);
-	root->node_shortcuts.insert({ node->fullname,node });
+	root->node_shortcuts.insert({ node->fullname(),node });
 
 	INCPOS(1); // skip name
 
@@ -1259,7 +1283,8 @@ CSharpParser::DelegateNode* CSharpParser::_parse_delegate() {
 
 std::string CSharpParser::_parse_type(bool array_constructor) {
 
-	std::string res = "";
+	string prev_cur_type = cur_type;
+	cur_type = "";
 
 	// base type: int/bool/... (nullable ?) [,,...,]
 	// complex type: NAMESPACE::NAME1. ... .NAMEn<type1,type2,...>[,,...,]
@@ -1285,23 +1310,23 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 
 		case CST::TK_OP_QUESTION_MARK: {
 			// nullable type
-			if (base_type) { res += "?"; INCPOS(1); break; }
+			if (base_type) { cur_type += "?"; INCPOS(1); break; }
 			else _unexpeced_token_error();
 		}
 
 		case CST::TK_OP_LESS: { // <
 
 			generic_types_mode = true;
-			res += "<";
+			cur_type += "<";
 			INCPOS(1);
-			res += _parse_type(); // recursive
+			cur_type += _parse_type(); // recursive
 			break;
 		}
 
 		case CST::TK_OP_GREATER: { // >
 
 			generic_types_mode = false;
-			res += ">";
+			cur_type += ">";
 			INCPOS(1);
 
 			// this is end unless it is '['
@@ -1314,17 +1339,17 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 
 		case CST::TK_BRACKET_OPEN: { // [
 			array_mode = true;
-			res += "[";
+			cur_type += "[";
 			INCPOS(1);
 			if (array_constructor) {
 				string expr = _parse_expression();
-				res += expr;
+				cur_type += expr;
 			}
 			break;
 		}
 		case CST::TK_BRACKET_CLOSE: { // ]
 			array_mode = false;
-			res += "]";
+			cur_type += "]";
 			INCPOS(1);
 
 			// for sure this is end of type
@@ -1333,12 +1358,12 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 
 		case CST::TK_COMMA: { // ,
 			if (generic_types_mode) {
-				res += ",";
+				cur_type += ",";
 				INCPOS(1);
-				res += _parse_type();
+				cur_type += _parse_type();
 			}
 			else if (array_mode) {
-				res += ",";
+				cur_type += ",";
 				INCPOS(1);
 			}
 			else {
@@ -1359,14 +1384,14 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			}
 
 			base_type = true;
-			res += CSharpLexer::token_names[(int)GETTOKEN(0)];
+			cur_type += CSharpLexer::token_names[(int)GETTOKEN(0)];
 			INCPOS(1);
 
 			// another has to be '?' either '[' - else it is finish
 			if (GETTOKEN(0) != CST::TK_OP_QUESTION_MARK
 				&& GETTOKEN(0) != CST::TK_BRACKET_OPEN)
 			{
-				return res; // end
+				end = true;
 			}
 			break;
 		}
@@ -1379,12 +1404,12 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			}
 
 			complex_type = true;
-			res += TOKENDATA(0);
+			cur_type += TOKENDATA(0);
 			INCPOS(1);
 
 			// finish if
 			if (_is_actual_token(CST::TK_PERIOD)) {
-				res += ".";
+				cur_type += ".";
 				INCPOS(1);
 				break;
 			}
@@ -1406,6 +1431,8 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 		}
 	}
 
+	string res = cur_type;
+	cur_type = prev_cur_type;
 	return res;
 }
 
@@ -1457,6 +1484,12 @@ bool CSharpParser::_parse_using_directive(FileNode* node) {
 
 // returns information if should continue parsing member or if it is finish
 bool CSharpParser::_parse_namespace_member(NamespaceNode* node) {
+
+	// parsing file is parsing namespace - if current token is eof (not '}')
+	// then we can say it is end of 'parsing namespace'
+	if (GETTOKEN(0) == CST::TK_EOF) {
+		return false;
+	}
 
 	_parse_attributes();
 	_apply_attributes(node);
@@ -1540,7 +1573,7 @@ void CSharpParser::debug_info() const {
 	if (pos == 1549) {
 		int x = 1;
 	}
-	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
+	//cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
 }
 
 
@@ -1831,11 +1864,8 @@ CSharpParser::InterfaceNode* CSharpParser::_parse_interface() {
 	Node* prev_current = current;
 	this->current = node;
 
-	string prev_fullname = this->actual_fullname;
 	node->name = TOKENDATA(0);
-	this->actual_fullname += (actual_fullname == "") ? node->name : ("." + node->name);
-	node->fullname = actual_fullname;
-	root->node_shortcuts.insert({ node->fullname,node });
+	root->node_shortcuts.insert({ node->fullname(),node });
 
 	INCPOS(1); // skip name
 
@@ -1871,7 +1901,6 @@ CSharpParser::InterfaceNode* CSharpParser::_parse_interface() {
 
 	// restore
 	this->current = prev_current;
-	this->actual_fullname = prev_fullname;
 	return node;
 
 }
@@ -2154,9 +2183,8 @@ CSharpParser::PropertyNode* CSharpParser::_parse_property(string name, string ty
 	this->current = node;
 
 	node->name = name;
-	node->fullname = actual_fullname + "." + node->name;
 	node->type = type;
-	root->node_shortcuts.insert({ node->fullname,node });
+	root->node_shortcuts.insert({ node->fullname(),node });
 
 	try {
 		// we don't know what is declared first: get or set
@@ -2399,9 +2427,8 @@ CSharpParser::MethodNode* CSharpParser::_parse_method_declaration(string name, s
 
 
 	node->name = name;
-	node->fullname = actual_fullname + "." + node->name;
 	node->return_type = return_type;
-	root->node_shortcuts.insert({ node->fullname,node });
+	root->node_shortcuts.insert({ node->fullname(),node });
 
 	try {
 		_assert(CST::TK_PARENTHESIS_OPEN);
@@ -2642,6 +2669,24 @@ void CSharpParser::MethodNode::print(int indent) const {
 
 }
 
+string CSharpParser::MethodNode::fullname() const
+{
+	string res;
+	if (parent != nullptr)
+		res = parent->fullname() + ".";
+
+	res += name + "(";
+	int n = arguments.size();
+	if (n > 0) {
+		for (int i = 0; i < n - 1; i++)
+			res += arguments[i]->fullname() + ","; // TODO trzeba oszacowac typ np C1 -> N1.N2.C1
+		res += arguments[n - 1]->fullname();
+	}
+	res += ")";
+
+	return res;
+}
+
 void CSharpParser::InterfaceNode::print(int indent) const {
 
 	indentation(indent);
@@ -2665,6 +2710,14 @@ void CSharpParser::EnumNode::print(int indent) const {
 
 void CSharpParser::PropertyNode::print(int indent) const {
 	// TODO
+}
+
+string CSharpParser::Node::fullname() const
+{
+	if (parent == nullptr)
+		return name;
+
+	return parent->fullname() + "." + name;
 }
 
 vector<CSharpParser::NamespaceNode*> CSharpParser::Node::get_namespaces()

@@ -98,7 +98,6 @@ public:
 		int modifiers = 0;
 		vector<string> attributes;
 		string name;
-		string fullname; // eg. Namespace1.Namespace2.ClassX.MethodY
 		Type node_type;
 		CSharpLexer::TokenData creator;
 
@@ -111,6 +110,7 @@ public:
 		}
 
 		virtual void print(int indent = 0) const = 0;
+		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY
 		virtual vector<NamespaceNode*> get_namespaces();
 		virtual vector<ClassNode*> get_classes();
 		virtual vector<MethodNode*> get_methods();
@@ -169,6 +169,7 @@ public:
 
 		FileNode() : NamespaceNode(CSharpLexer::TokenData()) { node_type = Type::FILE; }
 		void print(int indent = 0) const override;
+		virtual string fullname() const override;
 	};
 
 	struct EnumNode : public Node {
@@ -229,6 +230,7 @@ public:
 
 		MethodNode(TD td) : GenericNode(Type::METHOD,td) {}
 		void print(int indent = 0) const override;
+		virtual string fullname() const;
 	};
 
 	struct DelegateNode : public GenericNode {
@@ -366,7 +368,9 @@ private:
 	ClassNode* cur_class;
 	MethodNode* cur_method;
 	BlockNode* cur_block;
+	string prev_expression;
 	string cur_expression;
+	string cur_type;
 
 	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
 	Node* cursor;				// wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
@@ -381,8 +385,6 @@ private:
 	vector<CSharpLexer::TokenData> tokens; // tokens of being parsed file
 	vector<string> attributes;
 	set<string> identifiers;
-
-	string actual_fullname;
 
 	bool kw_value_allowed = false; // enable only when parse property->set
 
@@ -429,7 +431,8 @@ private:
 	JumpNode* _parse_jump();
 	UsingNode* _parse_using_statement();
 	StatementNode* _parse_statement();
-	string _parse_expression();
+
+	string _parse_expression(bool inside = false, CSharpLexer::Token opener = CSharpLexer::Token::TK_EMPTY);
 	MethodNode* _parse_method_declaration(string name, string return_type, bool interface_context = false);
 	BlockNode* _parse_block();
 	ConditionNode* _parse_if_statement();

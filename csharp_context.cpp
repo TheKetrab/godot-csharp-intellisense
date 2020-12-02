@@ -26,6 +26,7 @@ void CSharpContext::update_state(string &code, string &filename) {
 	ctx_class       = parser.completion_class;
 	ctx_method      = parser.completion_method;
 	ctx_block       = parser.completion_block;
+	ctx_expression = parser.completion_expression;
 
 	ctx_column = parser.cursor_column;
 	ctx_line   = parser.cursor_line;
@@ -256,6 +257,88 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 
 
 	return options;
+}
+
+// N1.C1.M1(...) --> zwróci typ, jaki zwraca M1
+// N1.C1.P1 --> zwróci typ, jakiego jest ta w³aœciwoœæ
+// N1.C1.C2 --> zwróci N1
+string CSharpContext::map_to_type(string expr) {
+
+	// find in user's files
+	for (auto f : files) {
+		auto &m = f.second->node_shortcuts;
+		auto it = m.find(expr);
+		if (it != m.end()) {
+			CSP::Node* n = it->second;
+			if (n->node_type == CSP::Node::Type::METHOD) {
+				CSP::MethodNode* mn = dynamic_cast<CSP::MethodNode*>(n);
+				return mn->return_type;
+			}
+			else if (n->node_type == CSP::Node::Type::PROPERTY) {
+				CSP::PropertyNode* mn = dynamic_cast<CSP::PropertyNode*>(n);
+				return mn->type;
+			}
+			else if (n->node_type == CSP::Node::Type::VAR) {
+				CSP::VarNode* mn = dynamic_cast<CSP::VarNode*>(n);
+				return mn->type;
+			}
+			// else return the same
+		}
+
+	}
+
+	return expr;
+
+}
+
+// zwraca np:
+// Namespace1.Namespace2.Class1.Class2 - typ
+// Namespace1.Class1.ConcreteMethod - metoda
+// 'Class1.Class2.Prop1' -> int - typ w³aœciwoœci Prop1 czyli np int
+//
+// C1.M1(int,string) --> T', gdzie T' to typ zwracany przez to przeci¹¿enie M1
+//
+// C() zwraca typ C', E to jakaœ funkcja w C'.D, x to zmienna typu int
+// A.B.C().D.E(x, --> C'.D.E(int  --> bêdzie to trzeba próbowaæ dopasowaæ
+//
+// TODO dodac obslugiwanie blokow expr { }
+string CSharpContext::deduce(const string &expr, int &pos)
+{
+	// rekurencyjna funkcja iteruje sie po stringu expr i dedukuje aktualny typ (fullname)
+
+	// "N1.C1.GetSth()" -> typ, ktory zwraca GetSth
+	// "N1.C1.GetSth(...) - wchodzi rekurencyjnie do œrodka
+
+	string deduced = "";
+
+	while (expr[pos] != '\0') {
+
+		// inner context - argument of a function
+		if (expr[pos+1] == ',' || expr[pos+1] == ')') {
+			return map_to_type(deduced);
+		}
+
+		// outer ctx
+		else if (expr[pos] == '(') {
+			deduced += '(';
+			pos++;
+			deduced += deduce(expr, pos);
+		}
+
+		else if (expr[pos] == ')') {
+			deduced += ')';
+			deduced = 
+			pos++;
+		}
+
+		else {
+			deduced += expr[pos];
+			pos++;
+		}
+
+	}
+
+	return deduced;
 }
 
 vector<string> CSharpContext::get_visible_types() {

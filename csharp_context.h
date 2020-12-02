@@ -8,18 +8,8 @@ using CSP = CSharpParser;
 using namespace std;
 
 
-struct lex_compare {
-	bool operator() (const string& a, const string& b) const {
-		return strcmp(a.c_str(), b.c_str()) == 1;
-	}
-};
-
-using lexset = set<string, lex_compare>;
-
-
 class CSharpContext {
-
-public:
+  public:
 	enum class Option {
 		KIND_CLASS,
 		KIND_FUNCTION,
@@ -31,8 +21,7 @@ public:
 		KIND_LABEL
 	};
 
-private:
-
+  private:
 	unordered_map<string, CSP::FileNode*> files; // dane o plikach przez nazwe
 	static CSharpContext* _instance;
 
@@ -75,16 +64,17 @@ public:
 	vector<string> get_function_signatures(string function_name);
 	vector<string> get_visible_labels();
 
-
-
 	void print_shortcuts();
 	void print();
 
 	vector<pair<Option, string>> get_options();
 
+	string deduce(const string &expr, int &pos);
+	string map_to_type(string type_expr);
+
+
 private:
 	CSharpContext();
-
 
 	// https://docs.microsoft.com/en-us/archive/msdn-magazine/2019/october/csharp-accessing-xml-documentation-via-reflection
 	// Methods “M:”; Types “T:”; Fields “F:”; Properties “P:”; Constructors “M:”; Events “E:”.
