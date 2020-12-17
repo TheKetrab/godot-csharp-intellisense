@@ -10,6 +10,21 @@ using namespace std;
 #define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
 #define INCPOS(ammount) { pos += ammount; }
 
+template <typename T, typename U>
+void append(list<T*>& lst, const vector<U*> &vec)
+{
+	for (const auto x : vec)
+		lst.push_back(x);
+}
+
+template <typename T, typename U>
+void append(list<T*>& lst, const list<U*> &l)
+{
+	for (const auto x : l)
+		lst.push_back(x);
+}
+
+
 void CSharpParser::_found_cursor() {
 	cinfo.ctx_cursor = current;
 	cinfo.cursor_column = TOKENINFO(0).column;
@@ -2649,6 +2664,43 @@ void CSharpParser::StructNode::print(int indent) const {
 	if (structures.size() > 0)	for (StructNode* x : structures)	x->print(indent + TAB);
 }
 
+list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types() const
+{
+	list<TypeNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_types();
+
+	append(res, structures);
+	append(res, classes);
+	append(res, interfaces);
+	append(res, delegates);
+
+	return res;
+}
+
+list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods() const
+{
+	list<MethodNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_methods();
+
+	append(res, methods);
+
+	return res;
+}
+
+list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars() const
+{
+	list<VarNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_vars();
+
+	append(res, variables);
+	append(res, properties);
+
+	return res;
+}
+
 void CSharpParser::StatementNode::print(int indent) const {
 
 	indentation(indent);
@@ -2705,6 +2757,19 @@ string CSharpParser::MethodNode::fullname() const
 	return res;
 }
 
+list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars() const
+{
+	list<VarNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_vars();
+
+	// arguments are visible aswell
+	for (auto x : arguments)
+		res.push_back(x);
+
+	return res;
+}
+
 void CSharpParser::InterfaceNode::print(int indent) const {
 
 	indentation(indent);
@@ -2756,63 +2821,73 @@ string CSharpParser::Node::fullname() const
 
 
 // default
-list<const CSharpParser::NamespaceNode*> CSharpParser::Node::get_visible_namespaces() const
+list<CSharpParser::NamespaceNode*> CSharpParser::Node::get_visible_namespaces() const
 {
 	if (parent != nullptr)
 		return parent->get_visible_namespaces();
 
-	return list<const NamespaceNode*>();
+	return list<NamespaceNode*>();
 }
 
-list<const CSharpParser::NamespaceNode*> CSharpParser::NamespaceNode::get_visible_namespaces() const
+// default
+list<CSharpParser::TypeNode*> CSharpParser::Node::get_visible_types() const
 {
-	list<const NamespaceNode*> res;
+	if (parent != nullptr)
+		return parent->get_visible_types();
+
+	return list<TypeNode*>();
+}
+
+list<CSharpParser::NamespaceNode*> CSharpParser::NamespaceNode::get_visible_namespaces() const
+{
+	list<NamespaceNode*> res;
 	if (parent != nullptr)
 		res = parent->get_visible_namespaces();
 
-	list<const NamespaceNode*> l = to_safe_list(namespaces);
-	res.splice(res.end(), l);
+	append(res, namespaces);
+
+	return res;
+}
+
+list<CSharpParser::TypeNode*> to_safe_list2(const vector<CSharpParser::TypeNode*>& vec)
+{
+	list<CSharpParser::TypeNode*> lst;
+	for (CSharpParser::TypeNode* n : vec)
+		lst.push_back(n);
+
+	return lst;
+}
+
+list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types() const
+{
+	list<TypeNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_types();
+
+	append(res, structures);
+	append(res, classes);
+	append(res, interfaces);
+	append(res, delegates);
 
 	return res;
 }
 
 // default
-list<const CSharpParser::ClassNode*> CSharpParser::Node::get_visible_classes() const
-{
-	if (parent != nullptr)
-		return parent->get_visible_classes();
-
-	return list<const ClassNode*>();
-}
-
-list<const CSharpParser::ClassNode*> CSharpParser::NamespaceNode::get_visible_classes() const
-{
-	list<const ClassNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_classes();
-
-	list<const ClassNode*> l = to_safe_list(classes);
-	res.splice(res.end(), l);
-
-	return res;
-}
-
-// default
-list<const CSharpParser::MethodNode*> CSharpParser::Node::get_visible_methods() const
+list<CSharpParser::MethodNode*> CSharpParser::Node::get_visible_methods() const
 {
 	if (parent != nullptr)
 		return parent->get_visible_methods();
 
-	return list<const MethodNode*>();
+	return list<MethodNode*>();
 }
 
-// default
-list<const CSharpParser::VarNode*> CSharpParser::Node::get_visible_variables() const
+// deafult
+list<CSharpParser::VarNode*> CSharpParser::Node::get_visible_vars() const
 {
 	if (parent != nullptr)
-		return parent->get_visible_variables();
+		return parent->get_visible_vars();
 
-	return list<const VarNode*>();
+	return list<VarNode*>();
 }
 
 string join_vector(const vector<string> &v, const string &joiner)
@@ -2928,4 +3003,22 @@ void CSharpParser::Node::print_header(int indent, const vector<string> &v, strin
 CSharpParser::Node::Node(Type t, TD td) {
 	this->creator = td;
 	this->node_type = t;
+}
+
+list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
+{
+	list<VarNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_vars();
+
+	// all statements in current block are BEFORE cursor
+	for (StatementNode* node : statements) {
+		
+		// declaration -> add variable to visibles
+		if (node->node_type == Type::DECLARATION)
+			res.push_back(((DeclarationNode*)node)->variable);
+
+	}
+
+	return res;
 }

@@ -32,69 +32,6 @@ CSP::CompletionType CSharpContext::get_completion_type()
 	return cinfo.completion_type;
 }
 
-vector<CSP::NamespaceNode*> CSharpContext::get_namespaces()
-{
-	// all declared namespaces
-	vector<CSP::NamespaceNode*> res;
-	for (auto f : files)
-		for (CSP::NamespaceNode *n : f.second->namespaces)
-			res.push_back(n);
-
-	return res;
-}
-
-vector<CSP::ClassNode*> CSharpContext::get_visible_classes() {
-
-	vector<CSP::ClassNode*> res;
-
-	// all classes in current namespace
-	for (auto f : files)
-		for (CSP::NamespaceNode *n : f.second->namespaces)
-			if (n->name == cinfo.ctx_namespace->name)
-				for (CSP::ClassNode *c : n->classes)
-					res.push_back(c);
-
-	// all classes from namespaces used in current file
-	// TODO
-
-	return res;
-}
-
-vector<CSP::StructNode*> CSharpContext::get_visible_structs()
-{
-	// TODO
-	return vector<CSP::StructNode*>();
-}
-
-vector<CSP::MethodNode*> CSharpContext::get_visible_methods()
-{
-	vector<CSP::MethodNode*> res;
-
-	// all methods declared in current class
-	for (CSP::MethodNode* m : cinfo.ctx_class->methods)
-		res.push_back(m);
-
-	// all methods from using static
-	// TODO
-
-	return res;
-}
-
-vector<CSP::VarNode*> CSharpContext::get_visible_vars()
-{
-	return vector<CSP::VarNode*>();
-}
-
-vector<CSP::PropertyNode*> CSharpContext::get_visible_properties()
-{
-	return vector<CSP::PropertyNode*>();
-}
-
-vector<CSP::InterfaceNode*> CSharpContext::get_visible_interfaces()
-{
-	return vector<CSP::InterfaceNode*>();
-}
-
 void CSharpContext::print_shortcuts()
 {
 	cout << " ----- --------- ----- " << endl;
@@ -105,7 +42,29 @@ void CSharpContext::print_shortcuts()
 			cout << shortcut.first << endl;
 		}
 	}
+}
 
+void CSharpContext::print_visible() {
+
+	cout << "LABELS:" << endl;
+	for (auto x : get_visible_labels())
+		cout << x << endl;
+
+	cout << "NAMESPACES:" << endl;
+	for (auto x : get_visible_namespaces())
+		cout << x->fullname() << endl;
+
+	cout << "TYPES:" << endl;
+	for (auto x : get_visible_types())
+		cout << x->fullname() << endl;
+
+	cout << "METHODS:" << endl;
+	for (auto x : get_visible_methods())
+		cout << x->fullname() << endl;
+
+	cout << "VARIABLES:" << endl;
+	for (auto x : get_visible_vars())
+		cout << x->fullname() << endl;
 
 }
 
@@ -447,16 +406,62 @@ string CSharpContext::deduce(const string &expr, int &pos)
 	return deduced;
 }
 
-vector<string> CSharpContext::get_visible_types() {
-	return vector<string>();
-}
-vector<string> CSharpContext::get_function_signatures(string function_name) {
-	return vector<string>();
+list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
+{
+	list<CSP::NamespaceNode*> lst;
+	
+	for (auto x : cinfo.ctx_cursor->get_visible_namespaces())
+		lst.push_back(x);
+	
+	// TODO: append visible namespaces from assembly_provider
 
+	return lst;
 }
-vector<string> CSharpContext::get_visible_labels() {
-	return vector<string>();
 
+list<CSP::TypeNode*> CSharpContext::get_visible_types()
+{
+	list<CSP::TypeNode*> lst;
+
+	for (auto x : cinfo.ctx_cursor->get_visible_types())
+		lst.push_back(x);
+
+	// TODO: append visible types from assembly_provider
+
+	return lst;
+}
+
+list<CSP::MethodNode*> CSharpContext::get_visible_methods()
+{
+	list<CSP::MethodNode*> lst;
+
+	for (auto x : cinfo.ctx_cursor->get_visible_methods())
+		lst.push_back(x);
+
+	// TODO: append visible methods from assembly_provider
+
+	return lst;
+}
+
+list<CSP::VarNode*> CSharpContext::get_visible_vars()
+{
+	list<CSP::VarNode*> lst;
+
+	for (auto x : cinfo.ctx_cursor->get_visible_vars())
+		lst.push_back(x);
+
+	// TODO: append visible vars from assembly_provider
+
+	return lst;
+}
+
+list<string> CSharpContext::get_visible_labels() {
+
+	list<string> lst;
+
+	for (auto x : cinfo.ctx_file->labels)
+		lst.push_back(x);
+
+	return lst;
 }
 
 

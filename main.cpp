@@ -57,9 +57,12 @@ int main() {
 	// PRINT
 	CSharpContext::instance()->print();
 
+	csc->print_visible();
+
 	cout << endl << endl << endl;
 	//cout << "deduced type = " << res << endl;
 
 	CSharpContext::instance()->print_shortcuts();
+
 	return 0;
 }

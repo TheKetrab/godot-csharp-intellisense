@@ -43,20 +43,15 @@ public:
 	void update_state(string &code, string &filename);
 	CSP::CompletionType get_completion_type();
 
-	vector<CSP::NamespaceNode*> get_namespaces();
-	vector<CSP::ClassNode*> get_visible_classes();
-	vector<CSP::StructNode*> get_visible_structs();
-	vector<CSP::MethodNode*> get_visible_methods();
-	vector<CSP::VarNode*> get_visible_vars();
-	vector<CSP::PropertyNode*> get_visible_properties();
-	vector<CSP::InterfaceNode*> get_visible_interfaces();
-
-	vector<string> get_visible_types();
-	vector<string> get_function_signatures(string function_name);
-	vector<string> get_visible_labels();
+	list<CSP::NamespaceNode*> get_visible_namespaces();
+	list<CSP::TypeNode*> get_visible_types();
+	list<CSP::MethodNode*> get_visible_methods();
+	list<CSP::VarNode*> get_visible_vars();
+	list<string> get_visible_labels();
 
 	void print_shortcuts();
 	void print();
+	void print_visible();
 
 	vector<pair<Option, string>> get_options();
 
