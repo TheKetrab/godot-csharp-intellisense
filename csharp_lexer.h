@@ -77,6 +77,8 @@ public:
 		int line;
 		int column;
 		int depth;
+
+		string to_string(bool typed = false) const;
 	};
 
 	static const char* token_names[(int)Token::TK_MAX];

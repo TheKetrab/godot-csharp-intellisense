@@ -845,3 +845,24 @@ set<string> CSharpLexer::get_keywords() {
 
 	return keywords;
 }
+
+string CSharpLexer::TokenData::to_string(bool typed) const
+{
+	if (type == CST::TK_IDENTIFIER) {
+		return this->data;
+	}
+
+	if (typed) {
+
+		switch (type) {
+		case CST::TK_LT_INTEGER:      return "int";
+		case CST::TK_LT_REAL:         return "double";
+		case CST::TK_LT_CHAR:         return "char";
+		case CST::TK_LT_STRING:
+		case CST::TK_LT_INTERPOLATED: return "string";
+		}
+	}
+
+	return token_names[(int)this->type];
+
+}

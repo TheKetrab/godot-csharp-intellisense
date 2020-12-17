@@ -46,10 +46,19 @@ int main() {
 	// PARSING
 	CSharpContext::instance()->update_state(str, filename);
 
+	auto csc = CSharpContext::instance();
+//	string res = csc->deduce_type(csc->ctx_expression);
+
+	CSharpParser::Node* temp = csc->cinfo.ctx_cursor;
+	while (temp != nullptr)
+		temp = temp->parent;
+
+
 	// PRINT
 	CSharpContext::instance()->print();
 
 	cout << endl << endl << endl;
+	//cout << "deduced type = " << res << endl;
 
 	CSharpContext::instance()->print_shortcuts();
 	return 0;

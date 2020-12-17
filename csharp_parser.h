@@ -7,34 +7,10 @@
 #include <vector>
 #include <unordered_map>
 
-// klasa nie ma parsowac i wykonywac, tylko okreslic kontekst
-// czyli wystarczy, ze zbudujemy taka strukture listowo-drzewiasta i okreslimy co widac
-// parser przechowuje sparsowane przez siebie pliki w formie FileNode
 
-// TODO zapamietaj glebokosc!
+// TODO: jesli znajdziesz kursor to nie parsuj dalej tego bloku - jesli jestes w bloku
+// --> wtedy aktualny blok zawiera wszystkie statementy zanim jest nasze wyrazenie
 
-// Node
-//    NamespaceNode
-//       FileNode
-//    EnumNode
-//    GenericNode (abstract)
-//       InterfaceNode
-//       StructNode
-//          ClassNode
-//       MethodNode
-//       DelegateNode
-//    VarNode
-//       PropertyNode
-//	  StatementNode
-//       ExpressionNode (assignment, method invocation, object creation);
-//       ConditionNode (if, else, switch, case)
-//	     LoopNode (while, do while, for, foreach)
-//	     DeclarationNode
-//	     JumpNode (break, continue, switch, goto, return, yeild)
-//	     TryNode (try-catch-finally)
-//	     UsingNode
-
-// todo: File powinien miec vector<string> labels - zeby w razie goto intellisense podpowiadalo widoczne etykiety
 using TD = CSharpLexer::TokenData;
 using namespace std;
 #include <map>
@@ -51,30 +27,38 @@ struct CSharpParserException : public exception {
 	}
 };
 
-
 class CSharpParser {
 
-public:
+  public:
+	
+	// ***************************** ***************************** //
+	// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- //
+	//              ===== ===== STRUCTURES ===== =====             //
+	// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- //
+	// ***************************** ***************************** //
+
+	// ----- ----- ----- ----- ----- //
 	struct Node;
-	struct FileNode;
-	struct NamespaceNode;
-	struct EnumNode;
-	struct GenericNode;
-	struct InterfaceNode;
-	struct StructNode;
-	struct ClassNode;
-	struct MethodNode;
-	struct DelegateNode;
-	struct VarNode;
-	struct PropertyNode;
-	struct StatementNode;
-	struct ExpressionNode;
-	struct ConditionNode;
-	struct LoopNode;
-	struct DeclarationNode;
-	struct JumpNode;
-	struct TryNode;
-	struct UsingNode;
+		struct NamespaceNode;
+			struct FileNode;
+		struct EnumNode;
+		struct GenericNode; // abstract
+			struct InterfaceNode;
+			struct StructNode;
+				struct ClassNode;
+			struct MethodNode;
+			struct DelegateNode;
+		struct VarNode;
+			struct PropertyNode;
+		struct StatementNode;
+			struct ExpressionNode; // (assignment, method invocation, object creation);
+			struct ConditionNode; // (if, else, switch, case)
+			struct LoopNode;  // (while, do while, for, foreach)
+			struct DeclarationNode;
+			struct JumpNode; // (break, continue, switch, goto, return, yeild)
+			struct TryNode; //  (try-catch-finally)
+			struct UsingNode;
+	// ----- ----- ----- ----- ----- //
 
 	// co my chcemy uzyskac
 	enum class CompletionType {
@@ -91,30 +75,45 @@ public:
 	// abstract
 	struct Node {
 
+		// fields
 		enum class Type {
-			UNKNOWN, FILE, NAMESPACE, ENUM, INTERFACE, STRUCT, CLASS, METHOD, PROPERTY, VAR, STATEMENT, LAMBDA
-		};
+			UNKNOWN, FILE, NAMESPACE, ENUM, INTERFACE,
+			STRUCT, CLASS, METHOD, PROPERTY, VAR, STATEMENT, LAMBDA
+		} node_type;
+
+		CSharpLexer::TokenData creator;
+		Node* parent = nullptr;
 
 		int modifiers = 0;
 		vector<string> attributes;
 		string name;
-		Type node_type;
-		CSharpLexer::TokenData creator;
 
-		Node* parent = nullptr;
+		// methods
+		Node() = default;
+		Node(Type t, TD td);
 
-		Node() {}
-		Node(Type t, TD td) {
-			this->creator = td;
-			this->node_type = t;
+		FileNode* get_parent_file();
+		bool is_visible(const vector<string> &redundant_prefix);
+		Node* get_child(const string name, Type t = Type::UNKNOWN);
+
+		template <typename T>
+		list<const T*> to_safe_list(const vector<T*>& vec) const
+		{
+			list<const T*> lst;
+			for (T* n : vec)
+				lst.push_back(n);
+
+			return lst;
 		}
 
 		virtual void print(int indent = 0) const = 0;
-		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY
-		virtual vector<NamespaceNode*> get_namespaces();
-		virtual vector<ClassNode*> get_classes();
-		virtual vector<MethodNode*> get_methods();
-		virtual vector<VarNode*> get_vars(); // vars and properties
+		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY(int,Namespace1.ClassY)
+		virtual list<const NamespaceNode*> get_visible_namespaces() const; // readonly visible namespaces
+		virtual list<const ClassNode*> get_visible_classes() const;        // readonly visible classess
+		virtual list<const MethodNode*> get_visible_methods() const;       // readonly visible methods
+		virtual list<const VarNode*> get_visible_variables() const;        // vars and properties
+		
+		void print_header(int indent, const vector<string> &v, string title) const;
 
 		template <class T>
 		void print_header(int indent, const vector<T*>& v, string title) const {
@@ -123,15 +122,6 @@ public:
 			cout << title;
 			for (T* t : v)
 				cout << " " << t->name;
-			cout << endl;
-		}
-
-		void print_header(int indent, const vector<string> &v, string title) const {
-			
-			indentation(indent);
-			cout << title;
-			for (string x : v)
-				cout << " " << x;
 			cout << endl;
 		}
 
@@ -151,6 +141,9 @@ public:
 
 		NamespaceNode(TD td) : Node(Type::NAMESPACE,td) {}
 		void print(int indent = 0) const override;
+
+		virtual list<const NamespaceNode*> get_visible_namespaces() const override;
+		virtual list<const ClassNode*> get_visible_classes() const override;
 	};
 
 	// filenode jest jak namespace global, tylko ze ma dodatkowe funkcjonalnosci (to co widac TYLKO w tym pliku)
@@ -214,6 +207,10 @@ public:
 
 		StructNode(TD td) : GenericNode(Type::STRUCT,td) {}
 		void print(int indent = 0) const override;
+
+		virtual list<const ClassNode*> get_visible_classes() const override;
+		virtual list<const MethodNode*> get_visible_methods() const override;
+		virtual list<const VarNode*> get_visible_variables() const override;
 	};
 
 	struct ClassNode : public StructNode {
@@ -243,6 +240,8 @@ public:
 		string value;
 
 		void print(int indent = 0) const override;
+
+		string get_type() const;
 
 		VarNode(TD td) : Node(Type::VAR,td) { }
 		VarNode(string name, string type, TD td)
@@ -284,7 +283,7 @@ public:
 
 	struct BlockNode : public StatementNode {
 		BlockNode(TD td) : StatementNode(td) {}
-		StatementNode* last_node = nullptr;
+		vector<StatementNode*> statements;
 	};
 
 	struct ConditionNode : public StatementNode {
@@ -356,9 +355,11 @@ public:
 		MOD_PARAMS = 1 << 19     //
 	};
 
-
-	// ----- ----- -----
-	// CLASS MEMBERS
+	// ***************************** ***************************** //
+	// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- //
+	//            ===== ===== CLASS MEMBERS ===== =====            //
+	// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- //
+	// ***************************** ***************************** //
 private:
 
 	FileNode* root;
@@ -371,12 +372,8 @@ private:
 	string prev_expression;
 	string cur_expression;
 	string cur_type;
-
 	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
-	Node* cursor;				// wezel w ktorym obecnie jestesmy, trzeba okreslic kontekst
 
-	int cursor_column = 0;
-	int cursor_line = 0;
 
 	int pos;                    // position of current token
 	int len;                    // total amount of tokens
@@ -389,58 +386,101 @@ private:
 	bool kw_value_allowed = false; // enable only when parse property->set
 
 	// completion info
-	string completion_info_str;
-	int completion_info_int = 0;
-	CompletionType completion_type;
-	NamespaceNode *completion_namespace;
-	ClassNode *completion_class;
-	MethodNode *completion_method;
-	BlockNode *completion_block;
-	string completion_expression;
+	struct CompletionInfo {
 
-	// ----- ----- -----
-	// CLASS METHODS
+		// msg
+		string completion_info_str;
+		int completion_info_int = 0;
+		string completion_expression;        // wyra¿enie, w którym znaleziono kursor
+
+		// cursor
+		Node* ctx_cursor;                        // wêze³, w którym znaleziono kursor
+		int cursor_column = -1;              // column of TK_CURSOR
+		int cursor_line = -1;                // line of TK_CURSOR
+
+		// type
+		CompletionType completion_type;      // jaki rodzaj autocompletion jest oczekiwany
+
+		// nodes
+		FileNode* ctx_file;           // plik, w którym jest kursor
+		NamespaceNode *ctx_namespace; // namespace, w którym jest kursor
+		ClassNode *ctx_class;         // klasa, w której jest kursor
+		MethodNode *ctx_method;       // metoda, w której jest kursor
+		BlockNode *ctx_block;         // blok, w którym jest kursor
+	} cinfo;
+
+	// ***************************** ***************************** //
+	// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- //
+	//            ===== ===== CLASS METHODS ===== =====            //
+	// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- //
+	// ***************************** ***************************** //
 public:
 	CSharpParser(string code);
 	~CSharpParser();
 	FileNode* parse();
 	void clear_state(); // set state to zero
 
-	void error(string msg) const;
-	void debug_info() const;
-
-	
 	static void indentation(int n);
 	static map<CSharpLexer::Token, Modifier> to_modifier;
 
-private:
-	
-	void _unexpeced_token_error() const;
 
+	friend class CSharpContext;
+
+
+	static string completion_type_name(CompletionType type);
+
+
+	// ----- ----- ERRORS & CURSOR ----- ----- //
+  public:
+	void error(string msg) const;
+	void debug_info() const;
+
+  private:
+	void _unexpeced_token_error() const;
 	bool _is_actual_token(CSharpLexer::Token tk, bool assert = false);
 	void _assert(CSharpLexer::Token tk); // make sure what is curtok
+	void _skip_until_token(CSharpLexer::Token tk); // TODO
+	void _found_cursor();
+	void _escape();
+	void _skip_until_end_of_block();
+	void _skip_until_end_of_class();
+	void _skip_until_end_of_namespace();
+	void _skip_until_next_line();
 
+
+	// ----- ----- PARSE ----- ----- //
+
+	// member
 	NamespaceNode* _parse_namespace(bool global);
 	FileNode* _parse_file();
 	ClassNode* _parse_class();
 	StructNode* _parse_struct();
 	InterfaceNode* _parse_interface();
 	EnumNode* _parse_enum();
+	MethodNode* _parse_method_declaration(string name, string return_type, bool interface_context = false);
+	DelegateNode* _parse_delegate();
+	bool _parse_using_directive(FileNode* node);
+	bool _parse_class_member(ClassNode* node);
+	bool _parse_namespace_member(NamespaceNode* node);
+	bool _parse_interface_member(InterfaceNode* node);
+	void _parse_modifiers();
+	void _parse_attributes();
+	void _apply_modifiers(Node* node);
+	void _apply_attributes(Node* node);
+
+	// statement
+	StatementNode* _parse_statement();
 	LoopNode* _parse_loop();
 	VarNode* _parse_declaration();
 	JumpNode* _parse_jump();
 	UsingNode* _parse_using_statement();
-	StatementNode* _parse_statement();
-
 	string _parse_expression(bool inside = false, CSharpLexer::Token opener = CSharpLexer::Token::TK_EMPTY);
-	MethodNode* _parse_method_declaration(string name, string return_type, bool interface_context = false);
 	BlockNode* _parse_block();
 	ConditionNode* _parse_if_statement();
-	TryNode* _parse_try_statement();
 	ConditionNode* _parse_switch_statement();
+	TryNode* _parse_try_statement();
 	PropertyNode* _parse_property(string name, string type);
 	StatementNode* _parse_property_definition();
-	DelegateNode* _parse_delegate();
 	string _parse_type(bool array_constructor = false);
 	string _parse_new();
 	string _parse_initialization_block();
@@ -449,53 +489,10 @@ private:
 	vector<string> _parse_generic_declaration(); // parse <T,U,...>
 	vector<string> _parse_derived_and_implements(bool generic_context = false); // parse : C1, I1, I2, ...
 
-	bool _parse_using_directive(FileNode* node);
-	bool _parse_class_member(ClassNode* node);
-	bool _parse_namespace_member(NamespaceNode* node);
-	bool _parse_interface_member(InterfaceNode* node);
-
-	void _parse_modifiers();
-	void _parse_attributes();
-	void _apply_modifiers(Node* node);
-	void _apply_attributes(Node* node);
-	
+	// ----- ----- COMPLETION ----- ----- //
 	CompletionType _deduce_completion_type();
 	string _deduce_owner_type(int from_pos);
 	int get_position_of_begining(int cur_pos);
-
-
-	// skipuje az do danego tokena, ktory jest na takim poziomie zaglebienia parsera w blokach (depth)
-	void _skip_until_token(CSharpLexer::Token tk);
-
-public:
-	
-	// TODO future
-	// global -> jak parser.depth == node.depth, to wezel przeczytany
-	struct Depth {
-		int curly_bracket_depth = 0;
-		int bracket_depth = 0;
-		int parenthesis_depth = 0;
-
-		bool operator==(const struct Depth& d) {
-			return curly_bracket_depth == d.curly_bracket_depth
-				&& bracket_depth == d.bracket_depth
-				&& parenthesis_depth == d.parenthesis_depth;
-		}
-	} depth;
-
-
-	static string completion_type_name(CompletionType type);
-	friend class CSharpContext;
-
-	void _found_cursor();
-
-	void _escape();
-	void _skip_until_end_of_block();
-	void _skip_until_end_of_class();
-	void _skip_until_end_of_namespace();
-	void _skip_until_next_line();
-
-
 
 };
 

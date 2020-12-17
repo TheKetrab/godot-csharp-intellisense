@@ -7,6 +7,9 @@
 using CSP = CSharpParser;
 using namespace std;
 
+class type_deduction_error : exception {
+
+};
 
 class CSharpContext {
   public:
@@ -21,29 +24,17 @@ class CSharpContext {
 		KIND_LABEL
 	};
 
-  private:
+  //private:
+	public:
 	unordered_map<string, CSP::FileNode*> files; // dane o plikach przez nazwe
 	static CSharpContext* _instance;
 
-	CSP::CompletionType completion_type;
-	CSP::FileNode *ctx_file;
-	CSP::NamespaceNode *ctx_namespace;
-	CSP::ClassNode *ctx_class;
-	CSP::MethodNode *ctx_method;
-	CSP::BlockNode *ctx_block;
-	CSP::Node *ctx; // ptr to current context
-	string ctx_expression;
-
-	string completion_info_str;
-	int completion_info_int = 0;
+	CSP::CompletionInfo cinfo;
 
 	vector<string> assembly_info_t;
 	vector<string> assembly_info_p;
 	vector<string> assembly_info_m;
 	vector<string> assembly_info_f;
-
-	int ctx_line;
-	int ctx_column;
 
 public:
 	static CSharpContext* instance();
@@ -72,6 +63,10 @@ public:
 	string deduce(const string &expr, int &pos);
 	string map_to_type(string type_expr);
 
+	// dedukuje typ wyrazenia
+	string deduce_type(const string expr);
+	string deduce_type(const vector<CSharpLexer::TokenData> &tokens, int &pos);
+	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 
 private:
 	CSharpContext();

@@ -5,6 +5,9 @@
 #include <regex>
 #include <algorithm>
 
+
+using CST = CSharpLexer::Token;
+
 CSharpContext* CSharpContext::_instance = nullptr;
 
 // update state oznacza, ze poproszono o sparsowanie kodu
@@ -18,28 +21,15 @@ void CSharpContext::update_state(string &code, string &filename) {
 	node->identifiers = parser.identifiers;
 	
 	files.insert({ filename,node });
-	ctx = parser.cursor;
 
-	// copy ptrs
-	completion_type = parser.completion_type;
-	ctx_namespace   = parser.completion_namespace;
-	ctx_class       = parser.completion_class;
-	ctx_method      = parser.completion_method;
-	ctx_block       = parser.completion_block;
-	ctx_expression = parser.completion_expression;
+	cinfo = parser.cinfo;
+	cinfo.ctx_file = node;
 
-	ctx_column = parser.cursor_column;
-	ctx_line   = parser.cursor_line;
-
-	completion_info_str = parser.completion_info_str;
-	completion_info_int = parser.completion_info_int;
-
-	ctx_file = node;
 }
 
 CSP::CompletionType CSharpContext::get_completion_type()
 {
-	return completion_type;
+	return cinfo.completion_type;
 }
 
 vector<CSP::NamespaceNode*> CSharpContext::get_namespaces()
@@ -60,7 +50,7 @@ vector<CSP::ClassNode*> CSharpContext::get_visible_classes() {
 	// all classes in current namespace
 	for (auto f : files)
 		for (CSP::NamespaceNode *n : f.second->namespaces)
-			if (n->name == ctx_namespace->name)
+			if (n->name == cinfo.ctx_namespace->name)
 				for (CSP::ClassNode *c : n->classes)
 					res.push_back(c);
 
@@ -81,7 +71,7 @@ vector<CSP::MethodNode*> CSharpContext::get_visible_methods()
 	vector<CSP::MethodNode*> res;
 
 	// all methods declared in current class
-	for (CSP::MethodNode* m : ctx_class->methods)
+	for (CSP::MethodNode* m : cinfo.ctx_class->methods)
 		res.push_back(m);
 
 	// all methods from using static
@@ -124,10 +114,10 @@ void CSharpContext::print() {
 	for (auto f : files)
 		f.second->print();
 
-	if (ctx != nullptr) {
-		cout << "Found cursor at: " << ctx_line << " " << ctx_column << endl;
-		cout << "Completion type is: " << CSharpParser::completion_type_name(completion_type) << endl;
-		cout << "Current expression is: " << ctx_expression << endl;
+	if (cinfo.ctx_cursor != nullptr) {
+		cout << "Found cursor at: " << cinfo.cursor_line << " " << cinfo.cursor_column << endl;
+		cout << "Completion type is: " << CSharpParser::completion_type_name(cinfo.completion_type) << endl;
+		cout << "Current expression is: " << cinfo.completion_expression << endl;
 	}
 }
 
@@ -195,7 +185,7 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 
 	vector<pair<Option, string>> options;
 
-	switch (completion_type) {
+	switch (cinfo.completion_type) {
 
 	case (CSharpParser::CompletionType::COMPLETION_NONE): {
 		// empty list
@@ -212,8 +202,8 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 	case (CSharpParser::CompletionType::COMPLETION_CALL_ARGUMENTS): {
 		
 		// creates list of signatures of functions which fit the name
-		string func_name = completion_info_str;
-		int cur_arg = completion_info_int;
+		string func_name = cinfo.completion_info_str;
+		int cur_arg = cinfo.completion_info_int;
 
 		// TODO get functions by name
 		// TODO add signature of function
@@ -236,7 +226,7 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 		set<string> identifiers; // destination of merging
 
 		set<string> keywords = CSharpLexer::get_keywords();
-		set<string> ctx_file_identifiers = ctx_file->identifiers;
+		set<string> ctx_file_identifiers = cinfo.ctx_file->identifiers;
 		
 		my_merge(identifiers, keywords);
 		my_merge(identifiers, ctx_file_identifiers);
@@ -264,6 +254,8 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 // N1.C1.C2 --> zwróci N1
 string CSharpContext::map_to_type(string expr) {
 
+	// TODO -> if is base type -> return it
+
 	// find in user's files
 	for (auto f : files) {
 		auto &m = f.second->node_shortcuts;
@@ -287,9 +279,123 @@ string CSharpContext::map_to_type(string expr) {
 
 	}
 
-	return expr;
+	// TODO: find in external assemblies
+
+	// not found -> return wildcart "?"
+	return expr; // TODO
 
 }
+
+// dedukuje typ jakiegoœ wyra¿enia, korzystaj¹c z informacji, które ma (np o namespaceach i klasie w której rozwa¿amy to wyra¿enie)
+string CSharpContext::deduce_type(const string expr)
+{
+	CSharpLexer lexer(expr);
+	lexer.tokenize();
+	auto tokens = lexer.get_tokens();
+
+	int pos = 0;
+	string res = deduce_type(tokens, pos);
+
+	return res;
+}
+
+// skipuje pozycje o te tokeny, które s¹ niepotrzebne
+void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos)
+{
+	vector<string> redundant_prefix;
+	if (tokens[pos].data == "C1") {
+		int x = 1;
+	}
+
+	bool end = false;
+	while (!end) {
+
+		string tk = tokens[pos].to_string(true);
+		if (tokens[pos].type == CST::TK_IDENTIFIER
+			&& tokens[pos + 1].type == CST::TK_PERIOD)
+		{
+			redundant_prefix.push_back(tk);
+			//if (ctx->is_visible(redundant_prefix)) { TODO: ctx jest niedokonczonym obiektem... jakis blad przy parsowaniu
+			//if (ctx_namespace->is_visible(redundant_prefix)) {
+			if (cinfo.ctx_file->is_visible(redundant_prefix)) {
+				pos += 2;
+			}
+			else {
+				end = true;
+			}
+
+		} else end = true;
+	}
+
+}
+
+// additionally: remove redundant - dodatkowo usuwa niepotrzebne: np jeœli N1.N2.C1 a jest to u¿ywane w klasie C1 albo s¹ otwarte te namespace'y (klauzul¹ using) to nie dodawaj do typu
+string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, int &pos)
+{
+	string res;
+	int n = tokens.size();
+
+	skip_redundant_prefix(tokens,pos);
+
+	bool end = false;
+	while (pos < n && !end) {
+
+		//function invokation
+		if (tokens[pos].type == CST::TK_PARENTHESIS_OPEN) {
+
+			pos++;
+			res += "(";
+
+			// parse arguments' types
+			while (true) {
+				string type = deduce_type(tokens, pos);
+				res += type;
+
+				// inner parenthesis close
+				if (tokens[pos].type == CST::TK_PARENTHESIS_CLOSE) {
+					pos++;
+					res += ")";
+					break;		
+				}
+
+				// inner comma
+				else if (tokens[pos].type == CST::TK_COMMA) {
+					pos++;
+					res += ",";
+				}
+
+				else {
+					throw type_deduction_error();
+				}
+			}
+
+			res = map_to_type(res);
+			break;
+
+		}
+
+		// outer parenthesis close
+		else if (tokens[pos].type == CST::TK_PARENTHESIS_CLOSE) {
+			end = true;
+		}
+
+		// outer comma
+		else if (tokens[pos].type == CST::TK_COMMA) {
+			end = true;
+		}
+
+		// sth else
+		else {
+
+			res += tokens[pos].to_string(true);
+			pos++;
+		}
+	}
+
+	res = map_to_type(res);
+	return res;
+}
+
 
 // zwraca np:
 // Namespace1.Namespace2.Class1.Class2 - typ
