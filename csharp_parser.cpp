@@ -13,7 +13,7 @@ using namespace std;
 
 #define SCAN_AND_ADD(collection) \
 	for (auto x : collection) \
-		if (x->name == name) \
+		if (x->name == name || name == "") \
 			res.push_back(x);
 
 

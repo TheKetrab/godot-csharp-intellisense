@@ -5,6 +5,13 @@
 #include <regex>
 #include <algorithm>
 
+string substr(string s, char c) {
+	string res;
+	for (int i = 0; i < s.size() && s[i] != c; i++)
+		res += s[i];
+	return res;
+}
+
 
 using CST = CSharpLexer::Token;
 
@@ -32,13 +39,19 @@ CSP::CompletionType CSharpContext::get_completion_type()
 	return cinfo.completion_type;
 }
 
-CSP::Node * CSharpContext::find_by_shortcuts(string shortname)
+list<CSP::Node*> CSharpContext::find_by_shortcuts(string shortname)
 {
-	for (auto s : cinfo.ctx_file->node_shortcuts)
-		if (s.first == shortname)
-			return s.second;
+	// for function -> compare until '(' -> only name
 
-	return nullptr;
+	list<CSP::Node*> res;
+	shortname = substr(shortname, '(');
+
+	for (auto s : cinfo.ctx_file->node_shortcuts) {
+		if (substr(s.first, '(') == shortname)
+			res.push_back(s.second);
+	}
+
+	return res;
 }
 
 void CSharpContext::print_shortcuts()
@@ -213,13 +226,29 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 	}
 	case (CSharpParser::CompletionType::COMPLETION_CALL_ARGUMENTS): {
 		
+		cout << "call arguments" << endl;
 		// creates list of signatures of functions which fit the name
 
-		string func_name = cinfo.completion_info_str;
+		// TODO -> ignore arguments, get all nodes whitch fit the name
+		list<CSharpParser::Node*> nodes = get_nodes_by_expression(cinfo.completion_expression);
+		for (auto x : nodes) {
+
+			string msg = x->name;
+			if (x->node_type == CSP::Node::Type::METHOD) {
+				msg = x->fullname();
+			}
+
+			options.push_back({ node_type_to_option(x->node_type), msg });
+
+		}
+
+
+		//string func_name = cinfo.completion_info_str;
 		int cur_arg = cinfo.completion_info_int;
 
 		// TODO get functions by name
 		// TODO add signature of function
+
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_LABEL): {
@@ -348,8 +377,7 @@ string CSharpContext::map_to_type(string expr) {
 
 }
 
-// dedukuje typ jakiegoœ wyra¿enia, korzystaj¹c z informacji, które ma (np o namespaceach i klasie w której rozwa¿amy to wyra¿enie)
-string CSharpContext::deduce_type(const string expr)
+string CSharpContext::simplify_expression(const string expr)
 {
 	CSharpLexer lexer(expr);
 	lexer.tokenize();
@@ -390,6 +418,7 @@ void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &
 
 }
 
+// dedukuje typ jakiegoœ wyra¿enia, korzystaj¹c z informacji, które ma (np o namespaceach i klasie w której rozwa¿amy to wyra¿enie)
 // additionally: remove redundant - dodatkowo usuwa niepotrzebne: np jeœli N1.N2.C1 a jest to u¿ywane w klasie C1 albo s¹ otwarte te namespace'y (klauzul¹ using) to nie dodawaj do typu
 string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, int &pos)
 {
@@ -401,6 +430,9 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 	bool end = false;
 	while (pos < n && !end) {
 
+		if (tokens[pos].type == CST::TK_EOF)
+			return res;
+
 		//function invokation
 		if (tokens[pos].type == CST::TK_PARENTHESIS_OPEN) {
 
@@ -410,7 +442,7 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 			// parse arguments' types
 			while (pos < n) {
 				string type = deduce_type(tokens, pos);
-				if (type == "EOF") return res;
+				if (type == "") return res;
 				res += type;
 
 				// inner parenthesis close
@@ -637,9 +669,54 @@ CSP::Node* CSharpContext::get_by_fullname(string fullname)
 
 }
 
+// symulacja DFS przy przechodzeniu po drzewie wêz³ów - szukamy wszystkiego co pasuje
+list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos) {
+
+	int n = tokens.size();
+
+	// EXIT IF -> invoker is visible
+	if (pos >= n || tokens[pos].type == CST::TK_EOF)
+		return list<CSP::Node*>({ invoker });
+
+	// ELSE -> tokens[pos] && tokens[pos+1] exist!
+
+	list<CSP::Node*> res;
+
+	// .X .Y -> skip them, find inside
+	if (tokens[pos].type == CST::TK_PERIOD
+		&& tokens[pos + 1].type == CST::TK_IDENTIFIER)
+	{
+		string child_name = tokens[pos + 1].data;
+		auto children = invoker->get_child(child_name);
+		for (auto x : children) {
+			auto res2 = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
+			for (auto y : res2)
+				res.push_back(y);
+		}
+	}
+	// only '.' -> all children
+	else if (tokens[pos].type == CST::TK_PERIOD
+		&& tokens[pos+1].type == CST::TK_EOF)
+	{
+		auto children = invoker->get_child(""); // "" means any child -> see SCAN_AND_ADD macro
+		for (auto x : children) {
+			
+		}
+	}
+	// '('
+	else if (tokens[pos].type == CST::TK_PARENTHESIS_OPEN)
+	{
+		// TODO to jest funkcja, filtruj przez argumenty???
+		res.push_back(invoker);
+
+	}
+
+	return res;
+
+}
 
 // cinfo.ctx_expression najpierw trzeba uproscic, a nastepnie wywolac get_nodes_by_expression
-list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
+list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
 {
 	// N1.C2.  -> zwraca listê memberów C2
 	// N1.C2.Foo( -> zwraca wszystkie funkcje 'Foo' z klasy C2
@@ -650,23 +727,30 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 	auto tokens = lexer.get_tokens();
 	int n = tokens.size();
 
-	string start_tok = tokens[0].data;
-	CSP::Node* temp = find_by_shortcuts(start_tok);
-	
-	if (temp == nullptr)
-		return list<CSP::Node*>();
-	
-	int i = 0;
-	for (int i = 0; i < n; i++) {
+	// w tym miejscu, skoro to simplified expression,
+	// to mamy albo jakiœ ³añcuch: N1.N2. ... .Nn.C1.C2
+	// albo mamy rozpoczêt¹ funkcjê: N1.C1.method1(int,
+	// na pewno nie mamy zamkniêtej funkcji (... method1(int,string). ... ),
+	// bo to zosta³oby uproszczone na typ, który zwraca!
 
-		//temp->get_child()
-
-
+	list<CSP::Node*> res;
+	list<CSP::Node*> start = find_by_shortcuts(tokens[0].data);
+	for (auto x : start) {
+		auto nodes = get_nodes_by_simplified_expression_rec(x,tokens, 1);
+		for (auto y : nodes)
+			res.push_back(y);
 	}
+	
+	return res;
+}
 
+list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
+{
+	string simplified = simplify_expression(expr);
+	if (simplified.empty())
+		return list<CSP::Node*>();
 
-
-	return list<CSP::Node*>();
+	return get_nodes_by_simplified_expression(simplified);
 }
 
 CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_type)

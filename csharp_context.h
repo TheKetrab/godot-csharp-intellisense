@@ -11,6 +11,10 @@ class type_deduction_error : exception {
 
 };
 
+class completion_error : exception {
+
+};
+
 class CSharpContext {
   public:
 	enum class Option {
@@ -53,10 +57,8 @@ public:
 	CSP::VarNode* get_var_by_name(string name);
 	CSP::Node* get_by_fullname(string fullname);
 
-	list<CSP::Node*> get_nodes_by_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
-	Option node_type_to_option(CSP::Node::Type node_type);
 
-	CSP::Node* find_by_shortcuts(string shortname);
+	list<CSP::Node*> find_by_shortcuts(string shortname);
 	void print_shortcuts();
 	void print();
 	void print_visible();
@@ -65,14 +67,20 @@ public:
 	void print_options();
 	string option_to_string(Option opt);
 
-	string deduce(const string &expr, int &pos);
-	string map_to_type(string type_expr);
-
 
 	// dedukuje typ wyrazenia
-	string deduce_type(const string expr);
+	string deduce(const string &expr, int &pos); // TODO wywalic
+	string map_to_type(string type_expr);
+
+	string simplify_expression(const string expr);
 	string deduce_type(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
+	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
+	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
+	list<CSP::Node*> get_nodes_by_expression(string expr);
+	Option node_type_to_option(CSP::Node::Type node_type);
+
+
 
 private:
 	CSharpContext();

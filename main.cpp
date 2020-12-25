@@ -47,9 +47,6 @@ int main() {
 	CSharpContext::instance()->update_state(str, filename);
 
 	auto csc = CSharpContext::instance();
-	string res = csc->deduce_type(csc->cinfo.completion_expression);
-
-
 
 	// PRINT
 	CSharpContext::instance()->print();
