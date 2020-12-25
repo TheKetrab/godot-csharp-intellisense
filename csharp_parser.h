@@ -97,8 +97,6 @@ class CSharpParser {
 
 		FileNode* get_parent_file();
 		bool is_visible(const vector<string> &redundant_prefix);
-		Node* get_child(const string name, Type t = Type::UNKNOWN);
-
 
 
 
@@ -108,7 +106,8 @@ class CSharpParser {
 		virtual list<TypeNode*> get_visible_types() const;           // readonly visible structures, classess, interfaces, delegates
 		virtual list<MethodNode*> get_visible_methods() const;       // readonly visible methods
 		virtual list<VarNode*> get_visible_vars() const;             // readonly visible vars and properties
-		
+		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const; // bezpoœrednie dzieci
+		virtual list<Node*> get_members() const; // metody, pola, podklasy swoje i klas bazowych
 
 		void print_header(int indent, const vector<string> &v, string title) const;
 
@@ -139,6 +138,8 @@ class CSharpParser {
 
 		virtual list<NamespaceNode*> get_visible_namespaces() const override;
 		virtual list<TypeNode*> get_visible_types() const override;
+		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
+		//virtual list<Node*> get_members() const override;
 	};
 
 	// filenode jest jak namespace global, tylko ze ma dodatkowe funkcjonalnosci (to co widac TYLKO w tym pliku)
@@ -175,8 +176,9 @@ class CSharpParser {
 
 		bool is_generic = false;
 		vector<string> generic_declarations;
-		string constraints;
+		string constraints; // generyczne: where ... 
 		TypeNode(Type t, TD td) : Node(t,td) {}
+
 	};
 
 	struct InterfaceNode : public TypeNode {
@@ -188,6 +190,8 @@ class CSharpParser {
 		InterfaceNode(TD td) : TypeNode(Type::INTERFACE,td) {}
 		~InterfaceNode() {}
 		void print(int indent = 0) const override;
+		
+		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
 	};
 
 	struct StructNode : public TypeNode {
@@ -209,6 +213,7 @@ class CSharpParser {
 		virtual list<TypeNode*> get_visible_types() const override;
 		virtual list<MethodNode*> get_visible_methods() const override;
 		virtual list<VarNode*> get_visible_vars() const override;
+		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
 	};
 
 	struct ClassNode : public StructNode {
@@ -217,7 +222,7 @@ class CSharpParser {
 		void print(int indent = 0) const override;
 	};
 
-	struct MethodNode : public TypeNode {
+	struct MethodNode : public TypeNode { // TODO !!! to nie jest type node tylko Generic Node ...
 
 		string return_type;
 		vector<VarNode*> arguments;
@@ -228,6 +233,7 @@ class CSharpParser {
 
 		void print(int indent = 0) const override;
 		virtual string fullname() const;
+		virtual string get_return_type() const; // with context
 
 		// NOTE: this method will be visible because will be visible in current class (parrent)
 		virtual list<VarNode*> get_visible_vars() const override;
@@ -241,9 +247,10 @@ class CSharpParser {
 	struct VarNode : public Node {
 
 		string type;
-		string value;
+		string value; // or bound expression
 
 		void print(int indent = 0) const override;
+		virtual string get_return_type() const; // with context
 
 		string get_type() const;
 
@@ -417,6 +424,8 @@ private:
 		BlockNode *ctx_block;         // blok, w którym jest kursor
 	} cinfo;
 
+	static const string wldc; // Wild Cart Type
+
 	// ***************************** ***************************** //
 	// ----- ----- ----- ----- ----- ----- ----- ----- ----- ----- //
 	//            ===== ===== CLASS METHODS ===== =====            //
@@ -430,6 +439,7 @@ public:
 
 	static void indentation(int n);
 	static map<CSharpLexer::Token, Modifier> to_modifier;
+	static bool is_base_type(string type);
 
 
 	friend class CSharpContext;
@@ -454,7 +464,6 @@ public:
 	void _skip_until_end_of_class();
 	void _skip_until_end_of_namespace();
 	void _skip_until_next_line();
-
 
 	// ----- ----- PARSE ----- ----- //
 

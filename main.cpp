@@ -47,11 +47,8 @@ int main() {
 	CSharpContext::instance()->update_state(str, filename);
 
 	auto csc = CSharpContext::instance();
-//	string res = csc->deduce_type(csc->ctx_expression);
+	string res = csc->deduce_type(csc->cinfo.completion_expression);
 
-	CSharpParser::Node* temp = csc->cinfo.ctx_cursor;
-	while (temp != nullptr)
-		temp = temp->parent;
 
 
 	// PRINT
@@ -60,9 +57,11 @@ int main() {
 	csc->print_visible();
 
 	cout << endl << endl << endl;
+	cout << "OPTIONS:" << endl;
+	csc->print_options();
 	//cout << "deduced type = " << res << endl;
 
-	CSharpContext::instance()->print_shortcuts();
+	//CSharpContext::instance()->print_shortcuts();
 
 	return 0;
 }

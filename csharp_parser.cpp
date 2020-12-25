@@ -10,6 +10,15 @@ using namespace std;
 #define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
 #define INCPOS(ammount) { pos += ammount; }
 
+
+#define SCAN_AND_ADD(collection) \
+	for (auto x : collection) \
+		if (x->name == name) \
+			res.push_back(x);
+
+
+const string CSharpParser::wldc = "?"; // Wild Cart Type
+
 template <typename T, typename U>
 void append(list<T*>& lst, const vector<U*> &vec)
 {
@@ -331,9 +340,10 @@ CSharpParser::CompletionType CSharpParser::_deduce_completion_type() {
 			}
 			case CST::TK_PARENTHESIS_OPEN: {
 				if (parenthesis == 0) {
-					if (GETTOKEN(i - 1) == CST::TK_IDENTIFIER)
-						cinfo.completion_info_str = TOKENDATA(i - 1);
-					else res = CompletionType::COMPLETION_NONE; // error
+					end = true;
+					//if (GETTOKEN(i - 1) == CST::TK_IDENTIFIER)
+					//	cinfo.completion_info_str = TOKENDATA(i - 1);
+					//else res = CompletionType::COMPLETION_NONE; // error
 				}
 				else parenthesis++;
 				break;
@@ -2701,6 +2711,22 @@ list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars() const
 	return res;
 }
 
+list<CSharpParser::Node*> CSharpParser::StructNode::get_child(const string name, Type t) const
+{
+	list<Node*> res;
+	SCAN_AND_ADD(variables);
+	SCAN_AND_ADD(methods);
+	SCAN_AND_ADD(classes);
+	SCAN_AND_ADD(interfaces);
+	SCAN_AND_ADD(structures);
+	SCAN_AND_ADD(enums);
+	SCAN_AND_ADD(properties);
+	SCAN_AND_ADD(delegates);
+	SCAN_AND_ADD(variables);
+
+	return res;
+}
+
 void CSharpParser::StatementNode::print(int indent) const {
 
 	indentation(indent);
@@ -2717,13 +2743,38 @@ void CSharpParser::VarNode::print(int indent) const {
 
 }
 
+#include "csharp_context.h"
 string CSharpParser::VarNode::get_type() const
 {
+	// deduce var type
+	if (type == "var") {
+
+		if (value.empty())
+			return wldc;
+
+		auto ctx = CSharpContext::instance()->cinfo.ctx_cursor;
+		if (ctx == nullptr)
+			return wldc;
+
+
+
+	}
+
 	string res;
 	if (modifiers & (int)Modifier::MOD_CONST)
 		res = "const ";
 
-	res += type;
+	string real_type;
+	// TODO if nie jest base type
+	TypeNode* node = CSharpContext::instance()->get_type_by_name(type);
+	if (node != nullptr)
+		real_type = node->fullname();
+
+	if (real_type.empty())
+		res += type;
+	else
+		res += real_type;
+
 	return res;
 }
 
@@ -2757,6 +2808,40 @@ string CSharpParser::MethodNode::fullname() const
 	return res;
 }
 
+string CSharpParser::MethodNode::get_return_type() const
+{
+	if (CSP::is_base_type(return_type))
+		return return_type;
+	else {
+		CSP::TypeNode* tn = CSharpContext::instance()->get_type_by_name(return_type);
+		if (tn == nullptr) {
+			return return_type; // TODO error? not found
+		}
+		else {
+			return tn->fullname();
+		}
+	}
+
+	return string();
+}
+
+string CSharpParser::VarNode::get_return_type() const
+{
+	if (CSP::is_base_type(type))
+		return type;
+	else {
+		CSP::TypeNode* tn = CSharpContext::instance()->get_type_by_name(type);
+		if (tn == nullptr) {
+			return type; // TODO error? not found
+		}
+		else {
+			return tn->fullname();
+		}
+	}
+
+	return string();
+}
+
 list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars() const
 {
 	list<VarNode*> res;
@@ -2780,6 +2865,15 @@ void CSharpParser::InterfaceNode::print(int indent) const {
 	if (methods.size() > 0)		   print_header(indent + TAB, methods,    "> methods:");
 	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
 	
+}
+
+list<CSharpParser::Node*> CSharpParser::InterfaceNode::get_child(const string name, Type t) const
+{
+	list<Node*> res;
+	SCAN_AND_ADD(methods);
+	SCAN_AND_ADD(properties);
+
+	return res;
 }
 
 void CSharpParser::EnumNode::print(int indent) const {
@@ -2811,7 +2905,7 @@ CSharpParser::FileNode* CSharpParser::Node::get_parent_file()
 
 string CSharpParser::Node::fullname() const
 {
-	if (parent == nullptr)
+	if (parent == nullptr || parent->node_type == Type::FILE)
 		return name;
 
 	return parent->fullname() + "." + name;
@@ -2872,6 +2966,22 @@ list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types() c
 	return res;
 }
 
+
+
+list<CSharpParser::Node*> CSharpParser::NamespaceNode::get_child(const string name, Type t) const
+{
+	list<CSharpParser::Node*> res;
+
+	SCAN_AND_ADD(namespaces);
+	SCAN_AND_ADD(classes);
+	SCAN_AND_ADD(structures);
+	SCAN_AND_ADD(interfaces);
+	SCAN_AND_ADD(enums);
+	SCAN_AND_ADD(delegates);
+
+	return res;
+}
+
 // default
 list<CSharpParser::MethodNode*> CSharpParser::Node::get_visible_methods() const
 {
@@ -2888,6 +2998,11 @@ list<CSharpParser::VarNode*> CSharpParser::Node::get_visible_vars() const
 		return parent->get_visible_vars();
 
 	return list<VarNode*>();
+}
+
+list<CSharpParser::Node*> CSharpParser::Node::get_child(const string name, Type t) const
+{
+	return list<CSharpParser::Node*>();
 }
 
 string join_vector(const vector<string> &v, const string &joiner)
@@ -2920,32 +3035,18 @@ bool CSharpParser::Node::is_visible(const vector<string>& redundant_prefix)
 
 	for (int i = 0; i < n; i++) {
 
-		Node* child = temp->get_child(redundant_prefix[i]);
-		if (child == nullptr) return false;
-		else temp = child;
+		// TODO
+		//Node* child = temp->get_child(redundant_prefix[i]);
+		//if (child == nullptr) return false;
+		//else temp = child;
 	}
 
 	return true;
 }
 
-CSharpParser::Node* CSharpParser::Node::get_child(const string name, Type t)
-{	
-	// TODO ! to robi w jednym kroku
-	/*
-	auto ns = get_visible_namespaces();
-	for (auto n : ns)
-		if (n->name == name)
-			return n;
-
-	for (auto c : this->get_visible_classes())
-		if (c->name == name)
-			return c;
-
-	for (auto m : this->get_visible_methods())
-		if (m->name == name)
-			return m;
-*/
-	return nullptr;
+list<CSP::Node*> CSharpParser::Node::get_members() const
+{
+	return list<Node*>();
 }
 
 
@@ -2991,6 +3092,7 @@ void CSharpParser::_skip_until_next_line() {
 
 }
 
+
 void CSharpParser::Node::print_header(int indent, const vector<string> &v, string title) const {
 
 	indentation(indent);
@@ -3021,4 +3123,22 @@ list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
 	}
 
 	return res;
+}
+
+bool CSharpParser::is_base_type(string type) {
+
+	string base_type[] = {
+		"bool", "byte",
+		"char", "string",
+		"decimal", "double", "float",
+		"int", "long", "short",
+		"uint", "ulong", "ushort",
+		"void", "object"
+	};
+
+	for (string x : base_type)
+		if (x == type)
+			return true;
+
+	return false;
 }

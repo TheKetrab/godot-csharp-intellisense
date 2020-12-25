@@ -48,15 +48,26 @@ public:
 	list<CSP::MethodNode*> get_visible_methods();
 	list<CSP::VarNode*> get_visible_vars();
 	list<string> get_visible_labels();
+	CSP::TypeNode* get_type_by_name(string name);
+	CSP::MethodNode* get_method_by_name(string name);
+	CSP::VarNode* get_var_by_name(string name);
+	CSP::Node* get_by_fullname(string fullname);
 
+	list<CSP::Node*> get_nodes_by_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
+	Option node_type_to_option(CSP::Node::Type node_type);
+
+	CSP::Node* find_by_shortcuts(string shortname);
 	void print_shortcuts();
 	void print();
 	void print_visible();
 
 	vector<pair<Option, string>> get_options();
+	void print_options();
+	string option_to_string(Option opt);
 
 	string deduce(const string &expr, int &pos);
 	string map_to_type(string type_expr);
+
 
 	// dedukuje typ wyrazenia
 	string deduce_type(const string expr);
@@ -67,14 +78,13 @@ private:
 	CSharpContext();
 
 	// https://docs.microsoft.com/en-us/archive/msdn-magazine/2019/october/csharp-accessing-xml-documentation-via-reflection
-	// Methods “M:”; Types “T:”; Fields “F:”; Properties “P:”; Constructors “M:”; Events “E:”.
+	// Methods M; Types T; Fields F; Properties P; Constructors M; Events E.
 	//
 	bool _is_assembly_member_line(const string &s, string &res);
 	void _load_xml_assembly(string path);
 
 
 	void my_merge(set<string> &s1, const set<string> &s2);
-
 };
 
 #endif // CSHARP_CONTEXT_H

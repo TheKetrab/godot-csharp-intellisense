@@ -32,6 +32,15 @@ CSP::CompletionType CSharpContext::get_completion_type()
 	return cinfo.completion_type;
 }
 
+CSP::Node * CSharpContext::find_by_shortcuts(string shortname)
+{
+	for (auto s : cinfo.ctx_file->node_shortcuts)
+		if (s.first == shortname)
+			return s.second;
+
+	return nullptr;
+}
+
 void CSharpContext::print_shortcuts()
 {
 	cout << " ----- --------- ----- " << endl;
@@ -46,26 +55,62 @@ void CSharpContext::print_shortcuts()
 
 void CSharpContext::print_visible() {
 
+	cout << endl;
+	cout << " ----- --------- ----- " << endl;
+	cout << "  VISIBLE IN CONTEXT:" << endl;
+	cout << " ----- --------- ----- " << endl;
+	cout << endl;
+
 	cout << "LABELS:" << endl;
 	for (auto x : get_visible_labels())
-		cout << x << endl;
+		cout << "  " << x << endl;
 
 	cout << "NAMESPACES:" << endl;
 	for (auto x : get_visible_namespaces())
-		cout << x->fullname() << endl;
+		cout << "  " << x->fullname() << endl;
 
 	cout << "TYPES:" << endl;
 	for (auto x : get_visible_types())
-		cout << x->fullname() << endl;
+		cout << "  " << x->fullname() << endl;
 
 	cout << "METHODS:" << endl;
-	for (auto x : get_visible_methods())
-		cout << x->fullname() << endl;
+	for (auto x : get_visible_methods()) {
+		cout << "  " << x->fullname() << " : ";
+
+		if (CSP::is_base_type(x->return_type))
+			cout << x->return_type << endl;
+		else {
+			CSP::TypeNode* tn = get_type_by_name(x->return_type);
+			if (tn == nullptr) {
+				cout << x->return_type << " [not found]" << endl;
+			} else {
+				cout << tn->fullname() << endl;
+			}
+		}
+
+	}
 
 	cout << "VARIABLES:" << endl;
-	for (auto x : get_visible_vars())
-		cout << x->fullname() << endl;
+	for (auto x : get_visible_vars()) {
 
+		cout << "  " << x->fullname() << " : ";
+
+		if (CSP::is_base_type(x->type))
+			cout << x->type << endl;
+		else {
+			CSP::TypeNode* tn = get_type_by_name(x->type);
+			if (tn == nullptr) {
+				cout << x->type << " [not found]" << endl;
+			}
+			else {
+				cout << tn->fullname() << endl;
+			}
+		}
+
+
+	}
+
+	cout << "----- ----- ----- ----- ----- -----" << endl;
 }
 
 void CSharpContext::print() {
@@ -151,16 +196,25 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_TYPE): {
-		// TODO
+		auto types = get_visible_types();
+		for (auto t : types)
+			options.push_back({ Option::KIND_CLASS, t->fullname() });
+
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_MEMBER): {
+		cout << " member" << endl;
+		list<CSharpParser::Node*> nodes = get_nodes_by_expression(cinfo.completion_expression);
+		for (auto x : nodes)
+			options.push_back({ node_type_to_option(x->node_type), x->name });
+
 
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_CALL_ARGUMENTS): {
 		
 		// creates list of signatures of functions which fit the name
+
 		string func_name = cinfo.completion_info_str;
 		int cur_arg = cinfo.completion_info_int;
 
@@ -170,14 +224,18 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 	}
 	case (CSharpParser::CompletionType::COMPLETION_LABEL): {
 
+		auto labels = get_visible_labels();
+		for (auto x : labels)
+			options.push_back({ Option::KIND_LABEL, x });
+
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_VIRTUAL_FUNC): {
-
+		// TODO
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_ASSIGN): {
-
+		// TODO
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_IDENTIFIER): {
@@ -208,32 +266,77 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 	return options;
 }
 
+void CSharpContext::print_options()
+{
+	auto opts = get_options();
+	for (auto opt : opts) {
+		cout << option_to_string(opt.first);
+		cout << " : " << opt.second << endl;
+	}
+}
+
+string CSharpContext::option_to_string(Option opt)
+{
+	switch (opt) {
+	case Option::KIND_CLASS:      return "CLASS   ";
+	case Option::KIND_FUNCTION:   return "FUNCTION";
+	case Option::KIND_VARIABLE:   return "VARIABLE";
+	case Option::KIND_MEMBER:     return "MEMBER  ";
+	case Option::KIND_ENUM:       return "ENUM    ";
+	case Option::KIND_CONSTANT:   return "CONSTANT";
+	case Option::KIND_PLAIN_TEXT: return "TEXT    ";
+	case Option::KIND_LABEL:      return "LABEL   ";
+	};
+
+	return string();
+}
+
 // N1.C1.M1(...) --> zwróci typ, jaki zwraca M1
 // N1.C1.P1 --> zwróci typ, jakiego jest ta w³aœciwoœæ
 // N1.C1.C2 --> zwróci N1
 string CSharpContext::map_to_type(string expr) {
 
-	// TODO -> if is base type -> return it
+	// is base type?
+	if (CSP::is_base_type(expr))
+		return expr;
 
 	// find in user's files
 	for (auto f : files) {
 		auto &m = f.second->node_shortcuts;
 		auto it = m.find(expr);
+		
+		// found in shortcuts?
 		if (it != m.end()) {
 			CSP::Node* n = it->second;
 			if (n->node_type == CSP::Node::Type::METHOD) {
 				CSP::MethodNode* mn = dynamic_cast<CSP::MethodNode*>(n);
 				return mn->return_type;
 			}
-			else if (n->node_type == CSP::Node::Type::PROPERTY) {
-				CSP::PropertyNode* mn = dynamic_cast<CSP::PropertyNode*>(n);
-				return mn->type;
-			}
-			else if (n->node_type == CSP::Node::Type::VAR) {
-				CSP::VarNode* mn = dynamic_cast<CSP::VarNode*>(n);
-				return mn->type;
+			else if (n->node_type == CSP::Node::Type::PROPERTY
+				|| n->node_type == CSP::Node::Type::VAR) {
+				CSP::VarNode* vn = (CSP::VarNode*)n;
+				return vn->get_type();
 			}
 			// else return the same
+		}
+
+		// try to find by fullname
+		else {
+			CSP::Node* n = get_by_fullname(expr);
+			if (n != nullptr) {
+				switch (n->node_type) {
+				case CSP::Node::Type::ENUM:
+				case CSP::Node::Type::NAMESPACE:
+				case CSP::Node::Type::CLASS:
+				case CSP::Node::Type::INTERFACE:
+					return n->fullname();
+				case CSP::Node::Type::METHOD:
+					return ((CSP::MethodNode*)n)->get_return_type();
+				case CSP::Node::Type::PROPERTY:
+				case CSP::Node::Type::VAR:
+					return ((CSP::VarNode*)n)->get_return_type();
+				}
+			}
 		}
 
 	}
@@ -262,9 +365,6 @@ string CSharpContext::deduce_type(const string expr)
 void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos)
 {
 	vector<string> redundant_prefix;
-	if (tokens[pos].data == "C1") {
-		int x = 1;
-	}
 
 	bool end = false;
 	while (!end) {
@@ -276,7 +376,9 @@ void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &
 			redundant_prefix.push_back(tk);
 			//if (ctx->is_visible(redundant_prefix)) { TODO: ctx jest niedokonczonym obiektem... jakis blad przy parsowaniu
 			//if (ctx_namespace->is_visible(redundant_prefix)) {
-			if (cinfo.ctx_file->is_visible(redundant_prefix)) {
+			if (get_type_by_name(tk) != nullptr) {
+				pos += 2;
+			} else if (cinfo.ctx_file->is_visible(redundant_prefix)) {
 				pos += 2;
 			}
 			else {
@@ -306,8 +408,9 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 			res += "(";
 
 			// parse arguments' types
-			while (true) {
+			while (pos < n) {
 				string type = deduce_type(tokens, pos);
+				if (type == "EOF") return res;
 				res += type;
 
 				// inner parenthesis close
@@ -450,7 +553,7 @@ list<CSP::VarNode*> CSharpContext::get_visible_vars()
 		lst.push_back(x);
 
 	// TODO: append visible vars from assembly_provider
-
+	
 	return lst;
 }
 
@@ -465,6 +568,134 @@ list<string> CSharpContext::get_visible_labels() {
 }
 
 
+CSP::TypeNode* CSharpContext::get_type_by_name(string name)
+{
+	if (this->cinfo.ctx_cursor == nullptr)
+		return nullptr;
+
+	// TODO to mo¿na przyspieszyæ szukaj¹c explicite a nie korzystaj¹c z get_visible_types
+	// TODO dodaæ cache dla kontekstu (byæ mo¿e wiele razy odwo³ujemy siê do nazwy danego typu)
+	auto types = get_visible_types();
+	for (auto x : types)
+		if (x->name == name)
+			return x;
+
+	// not found
+	return nullptr;
+}
+
+CSP::MethodNode * CSharpContext::get_method_by_name(string name)
+{
+	auto methods = get_visible_methods();
+	for (auto x : methods)
+		if (x->name == name)
+			return x;
+
+	// not found
+	return nullptr;
+}
+
+CSP::VarNode* CSharpContext::get_var_by_name(string name)
+{
+	auto vars = get_visible_vars();
+	for (auto x : vars)
+		if (x->name == name)
+			return x;
+
+	// not found
+	return nullptr;
+}
+
+CSP::Node* CSharpContext::get_by_fullname(string fullname)
+{
+	if (cinfo.ctx_cursor == nullptr)
+		return nullptr;
+
+	for (auto x : get_visible_namespaces()) {
+		if (fullname == x->fullname())
+			return x;
+	}
+
+	for (auto x : get_visible_types()) {
+		if (fullname == x->fullname())
+			return x;
+	}
+
+	for (auto x : get_visible_vars()) {
+		if (fullname == x->fullname())
+			return x;
+	}
+
+	for (auto x : get_visible_methods()) {
+		if (fullname == x->fullname())
+			return x;
+	}
+
+
+
+	return nullptr;
+
+}
+
+
+// cinfo.ctx_expression najpierw trzeba uproscic, a nastepnie wywolac get_nodes_by_expression
+list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
+{
+	// N1.C2.  -> zwraca listê memberów C2
+	// N1.C2.Foo( -> zwraca wszystkie funkcje 'Foo' z klasy C2
+
+	CSharpLexer lexer(expr);
+	lexer.tokenize();
+
+	auto tokens = lexer.get_tokens();
+	int n = tokens.size();
+
+	string start_tok = tokens[0].data;
+	CSP::Node* temp = find_by_shortcuts(start_tok);
+	
+	if (temp == nullptr)
+		return list<CSP::Node*>();
+	
+	int i = 0;
+	for (int i = 0; i < n; i++) {
+
+		//temp->get_child()
+
+
+	}
+
+
+
+	return list<CSP::Node*>();
+}
+
+CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_type)
+{
+	switch (node_type) {
+
+	case CSP::Node::Type::CLASS:
+	case CSP::Node::Type::INTERFACE:
+	case CSP::Node::Type::STRUCT:
+		return Option::KIND_CLASS;
+
+	case CSP::Node::Type::ENUM:
+		return Option::KIND_ENUM;
+
+	case CSP::Node::Type::METHOD:
+		return Option::KIND_FUNCTION;
+
+	case CSP::Node::Type::PROPERTY:
+	case CSP::Node::Type::VAR:
+		return Option::KIND_VARIABLE;
+
+	default:
+		return Option::KIND_PLAIN_TEXT; // todo unknown?
+	}
+
+}
+
+
+
 // put s2 values into s1
 void CSharpContext::my_merge(set<string> &s1, const set<string> &s2) {
 
@@ -472,3 +703,5 @@ void CSharpContext::my_merge(set<string> &s1, const set<string> &s2) {
 		s1.insert(v);
 
 }
+
+
