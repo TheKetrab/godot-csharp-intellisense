@@ -19,6 +19,9 @@ using namespace std;
 #include <exception>
 const int TAB = 2;
 
+class CSharpParser;
+
+
 struct CSharpParserException : public exception {
 	string msg;
 	CSharpParserException(string msg) : msg(msg) {}
@@ -92,8 +95,7 @@ class CSharpParser {
 		// methods
 		Node() = default;
 		Node(Type t, TD td);
-		//~Node() {}
-		//virtual ~Node() {}
+		virtual ~Node();
 
 		FileNode* get_parent_file();
 		bool is_visible(const vector<string> &redundant_prefix);
@@ -251,6 +253,7 @@ class CSharpParser {
 
 		void print(int indent = 0) const override;
 		virtual string get_return_type() const; // with context
+		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
 
 		string get_type() const;
 
@@ -409,7 +412,7 @@ private:
 		string completion_expression;        // wyra¿enie, w którym znaleziono kursor
 
 		// cursor
-		Node* ctx_cursor;                        // wêze³, w którym znaleziono kursor
+		Node* ctx_cursor;                    // wêze³, w którym znaleziono kursor
 		int cursor_column = -1;              // column of TK_CURSOR
 		int cursor_line = -1;                // line of TK_CURSOR
 

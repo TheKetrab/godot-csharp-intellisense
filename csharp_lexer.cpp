@@ -156,6 +156,14 @@ void CSharpLexer::_tokenize() {
 
 		}
 		
+		// CURSOR !!! ??? !!!
+		if (GETCHAR(0) == 0xFFFF || GETCHAR(0) == -1) {
+			std::cout << "CURSOR" << std::endl;
+			_make_token(CST::TK_CURSOR);
+			INCPOS(1);
+			continue;
+		}
+
 		// cout << "code pos is: " << code_pos << " -> " << (char)GETCHAR(0) << endl;
 		switch (GETCHAR(0)) {
 
@@ -794,6 +802,8 @@ bool CSharpLexer::is_whitespace(char c) {
 
 void CSharpLexer::print_tokens() const {
 
+	cout << "Print tokens" << endl;
+
 	int n = tokens.size();
 	int i = 0;
 	while (i < n) {
@@ -825,6 +835,9 @@ void CSharpLexer::print_tokens() const {
 		}
 		cout << endl;
 	}
+
+	cout << "Printing tokens is done" << endl;
+
 }
 
 

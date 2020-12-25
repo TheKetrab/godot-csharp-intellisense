@@ -78,6 +78,7 @@ public:
 	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
 	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
 	list<CSP::Node*> get_nodes_by_expression(string expr);
+	list<CSP::Node*> get_visible_in_ctx_by_name(string name);
 	Option node_type_to_option(CSP::Node::Type node_type);
 
 

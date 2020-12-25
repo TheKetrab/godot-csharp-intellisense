@@ -5,6 +5,8 @@ using CST = CSharpLexer::Token;
 using CSM = CSharpParser::Modifier;
 using namespace std;
 
+CSharpParser* active_parser; // TODO !!! wyrzucic to brzydkie rozwi¹zanie - albo shared ptr i weak ptr (weak jest w cinfo) , albo ka¿dy node ma owner_parser
+
 #define GETTOKEN(ofs) ((ofs + pos) >= len ? CST::TK_ERROR : tokens[ofs + pos].type)
 #define TOKENINFO(ofs) ((ofs + pos) >= len ? CSharpLexer::TokenData() : tokens[ofs + pos])
 #define TOKENDATA(ofs) ((ofs + pos >= len ? "" : tokens[ofs + pos].data))
@@ -141,6 +143,8 @@ CSharpParser::FileNode* CSharpParser::parse() {
 }
 
 CSharpParser::CSharpParser(string code) {
+
+	active_parser = this;
 
 	clear_state();
 
@@ -547,6 +551,12 @@ CSharpParser::FileNode * CSharpParser::_parse_file()
 void CSharpParser::_skip_until_token(CSharpLexer::Token tk) {
 
 	while (true) {
+
+		// if '}' then not found the token... this is error
+		if (GETTOKEN(0) == CST::TK_CURLY_BRACKET_CLOSE) {
+			_unexpeced_token_error();
+		}
+
 		if (GETTOKEN(0) == tk)
 			return;
 		else
@@ -1280,7 +1290,8 @@ CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 		// ----- ----- -----
 		// PARSE BLOCK
 		node->body = _parse_statement();
-		node->body->parent = node; // bind
+		if (node->body != nullptr)
+			node->body->parent = node; // bind
 
 		// ----- ----- -----
 		// PARSE AFTER BLOCK
@@ -2842,6 +2853,23 @@ string CSharpParser::VarNode::get_return_type() const
 	return string();
 }
 
+list<CSP::Node*> CSharpParser::VarNode::get_child(const string name, Type t) const
+{
+	string return_type = get_return_type();
+	if (return_type.empty() || is_base_type(return_type))
+		return list<CSP::Node*>();
+
+	// else -> cast to TypeNode and get members
+	auto csc = CSharpContext::instance();
+	auto nodes = csc->get_nodes_by_expression(return_type);
+
+	if (nodes.size() == 0)
+		return list<CSP::Node*>();
+
+	return nodes.front()->get_child(name, t);
+
+}
+
 list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars() const
 {
 	list<VarNode*> res;
@@ -3106,6 +3134,14 @@ CSharpParser::Node::Node(Type t, TD td) {
 	this->creator = td;
 	this->node_type = t;
 }
+
+CSharpParser::Node::~Node()
+{
+	if (active_parser->cinfo.ctx_cursor == this)
+		active_parser->cinfo.ctx_cursor = nullptr;
+
+}
+
 
 list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
 {

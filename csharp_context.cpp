@@ -5,6 +5,10 @@
 #include <regex>
 #include <algorithm>
 
+#define ASSURE_CTX(def_ret) \
+	if (cinfo.ctx_cursor == nullptr) \
+		return def_ret;
+
 string substr(string s, char c) {
 	string res;
 	for (int i = 0; i < s.size() && s[i] != c; i++)
@@ -543,6 +547,8 @@ string CSharpContext::deduce(const string &expr, int &pos)
 
 list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
 {
+	ASSURE_CTX(list<CSP::NamespaceNode*>());
+
 	list<CSP::NamespaceNode*> lst;
 	
 	for (auto x : cinfo.ctx_cursor->get_visible_namespaces())
@@ -555,6 +561,8 @@ list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
 
 list<CSP::TypeNode*> CSharpContext::get_visible_types()
 {
+	ASSURE_CTX(list<CSP::TypeNode*>());
+
 	list<CSP::TypeNode*> lst;
 
 	for (auto x : cinfo.ctx_cursor->get_visible_types())
@@ -567,6 +575,8 @@ list<CSP::TypeNode*> CSharpContext::get_visible_types()
 
 list<CSP::MethodNode*> CSharpContext::get_visible_methods()
 {
+	ASSURE_CTX(list<CSP::MethodNode*>());
+
 	list<CSP::MethodNode*> lst;
 
 	for (auto x : cinfo.ctx_cursor->get_visible_methods())
@@ -579,6 +589,8 @@ list<CSP::MethodNode*> CSharpContext::get_visible_methods()
 
 list<CSP::VarNode*> CSharpContext::get_visible_vars()
 {
+	ASSURE_CTX(list<CSP::VarNode*>());
+
 	list<CSP::VarNode*> lst;
 
 	for (auto x : cinfo.ctx_cursor->get_visible_vars())
@@ -591,6 +603,8 @@ list<CSP::VarNode*> CSharpContext::get_visible_vars()
 
 list<string> CSharpContext::get_visible_labels() {
 
+	ASSURE_CTX(list<string>());
+
 	list<string> lst;
 
 	for (auto x : cinfo.ctx_file->labels)
@@ -602,8 +616,7 @@ list<string> CSharpContext::get_visible_labels() {
 
 CSP::TypeNode* CSharpContext::get_type_by_name(string name)
 {
-	if (this->cinfo.ctx_cursor == nullptr)
-		return nullptr;
+	ASSURE_CTX(nullptr);
 
 	// TODO to mo¿na przyspieszyæ szukaj¹c explicite a nie korzystaj¹c z get_visible_types
 	// TODO dodaæ cache dla kontekstu (byæ mo¿e wiele razy odwo³ujemy siê do nazwy danego typu)
@@ -618,6 +631,8 @@ CSP::TypeNode* CSharpContext::get_type_by_name(string name)
 
 CSP::MethodNode * CSharpContext::get_method_by_name(string name)
 {
+	ASSURE_CTX(nullptr);
+
 	auto methods = get_visible_methods();
 	for (auto x : methods)
 		if (x->name == name)
@@ -629,6 +644,8 @@ CSP::MethodNode * CSharpContext::get_method_by_name(string name)
 
 CSP::VarNode* CSharpContext::get_var_by_name(string name)
 {
+	ASSURE_CTX(nullptr);
+
 	auto vars = get_visible_vars();
 	for (auto x : vars)
 		if (x->name == name)
@@ -640,8 +657,7 @@ CSP::VarNode* CSharpContext::get_var_by_name(string name)
 
 CSP::Node* CSharpContext::get_by_fullname(string fullname)
 {
-	if (cinfo.ctx_cursor == nullptr)
-		return nullptr;
+	ASSURE_CTX(nullptr);
 
 	for (auto x : get_visible_namespaces()) {
 		if (fullname == x->fullname())
@@ -672,6 +688,9 @@ CSP::Node* CSharpContext::get_by_fullname(string fullname)
 // symulacja DFS przy przechodzeniu po drzewie wêz³ów - szukamy wszystkiego co pasuje
 list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos) {
 
+	ASSURE_CTX(list<CSP::Node*>());
+
+
 	int n = tokens.size();
 
 	// EXIT IF -> invoker is visible
@@ -700,7 +719,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 	{
 		auto children = invoker->get_child(""); // "" means any child -> see SCAN_AND_ADD macro
 		for (auto x : children) {
-			
+			res.push_back(x);
 		}
 	}
 	// '('
@@ -718,6 +737,8 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 // cinfo.ctx_expression najpierw trzeba uproscic, a nastepnie wywolac get_nodes_by_expression
 list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
 {
+	ASSURE_CTX(list<CSP::Node*>());
+
 	// N1.C2.  -> zwraca listê memberów C2
 	// N1.C2.Foo( -> zwraca wszystkie funkcje 'Foo' z klasy C2
 
@@ -735,10 +756,42 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
 
 	list<CSP::Node*> res;
 	list<CSP::Node*> start = find_by_shortcuts(tokens[0].data);
-	for (auto x : start) {
-		auto nodes = get_nodes_by_simplified_expression_rec(x,tokens, 1);
-		for (auto y : nodes)
-			res.push_back(y);
+
+	// if found something - resolve
+	if (start.size() > 0) {
+
+		for (auto x : start) {
+			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
+			for (auto y : nodes)
+				res.push_back(y);
+		}
+	}
+
+	// find visible in context
+	else {
+
+		if (n >= 2) {
+
+			// member
+			if (tokens[0].type == CST::TK_IDENTIFIER && tokens[1].type == CST::TK_PERIOD) {
+
+				auto visible = get_visible_in_ctx_by_name(tokens[0].data);
+				for (auto x : visible) {
+
+					auto children = x->get_child(""); // all children
+					for (auto y : children)
+						res.push_back(y);
+
+				}
+
+			}
+			// function invokation
+			else if (tokens[0].type == CST::TK_IDENTIFIER && tokens[1].type == CST::TK_PARENTHESIS_OPEN) {
+				// TODO - czy tu coœ wgl trzeba?
+	
+			}
+
+		}
 	}
 	
 	return res;
@@ -746,11 +799,40 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
 
 list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 {
+	ASSURE_CTX(list<CSP::Node*>());
+
 	string simplified = simplify_expression(expr);
-	if (simplified.empty())
-		return list<CSP::Node*>();
+	if (simplified.empty() && !expr.empty()) {
+		// zredukowaliœmy N1.C1. do pustego stringa, a chodzi o pokazanie memberów z klasy C1
+		// przywróæ!!!
+		simplified = expr;
+	}
+
 
 	return get_nodes_by_simplified_expression(simplified);
+}
+
+list<CSP::Node*> CSharpContext::get_visible_in_ctx_by_name(string name)
+{
+	list<CSP::Node*> res;
+
+	for (auto x : get_visible_namespaces())
+		if (name == x->name)
+			res.push_back(x);
+
+	for (auto x : get_visible_types())
+		if (name == x->name)
+			res.push_back(x);
+
+	for (auto x : get_visible_methods())
+		if (name == x->name)
+			res.push_back(x);
+
+	for (auto x : get_visible_vars())
+		if (name == x->name)
+			res.push_back(x);
+
+	return res;
 }
 
 CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_type)

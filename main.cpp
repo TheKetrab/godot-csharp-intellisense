@@ -10,7 +10,7 @@
 using namespace std;
 int main() {
 
-	string filename = "script1.cs";
+	string filename = "x.cs";
 
 	ifstream file;
 	file.open(filename);
@@ -43,13 +43,14 @@ int main() {
 	cout << "----- ----- -----" << endl;
 	lexer.print_tokens();
 
-	// PARSING
-	CSharpContext::instance()->update_state(str, filename);
 
 	auto csc = CSharpContext::instance();
 
+	// PARSING
+	csc->update_state(str, filename);
+
 	// PRINT
-	CSharpContext::instance()->print();
+	csc->print();
 
 	csc->print_visible();
 
