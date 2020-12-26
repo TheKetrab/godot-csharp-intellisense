@@ -1,4 +1,5 @@
 #include "csharp_parser.h"
+#include "csharp_context.h"
 #include <iostream>
 
 using CST = CSharpLexer::Token;
@@ -18,6 +19,9 @@ CSharpParser* active_parser; // TODO !!! wyrzucic to brzydkie rozwi¹zanie - albo
 		if (x->name == name || name == "") \
 			res.push_back(x);
 
+#define SCAN_AND_DELETE(collection) \
+	for (auto x : collection) \
+		delete x;
 
 const string CSharpParser::wldc = "?"; // Wild Cart Type
 
@@ -504,6 +508,10 @@ set<string> CSharpParser::FileNode::get_external_identifiers()
 	return res;
 }
 
+CSharpParser::FileNode::~FileNode()
+{
+}
+
 void CSharpParser::FileNode::print(int indent) const {
 
 	indentation(indent);
@@ -895,6 +903,10 @@ string CSharpParser::_parse_expression(bool inside, CST opener) {
 	// po wyjsciu z funkcji karetka ma byc nad tokenem zaraz ZA wyrazeniem
 	// try untill ')' at the same depth or ',' or ';'
 
+	// UWAGA - nie chcemy tu rzucaæ wyj¹tku, bo try-catch jest na zewn¹trz tej funkcji
+	// i usunie siê np VarNode: int x = "...error...", a powinniœmy widzieæ zmienn¹ x!
+	// --> jeœli coœ dziwnego, to nale¿y ustawiæ end = true
+
 	prev_expression = cur_expression;
 	//string prev_expr = cur_expression;
 	cur_expression = "";
@@ -943,7 +955,7 @@ string CSharpParser::_parse_expression(bool inside, CST opener) {
 		}
 		case CST::TK_SEMICOLON: {
 			if (!inside) end = true;
-			else { _unexpeced_token_error(); }
+			else { end = true; }
 			break;
 		}
 		case CST::TK_PARENTHESIS_CLOSE: {
@@ -1018,13 +1030,13 @@ string CSharpParser::_parse_expression(bool inside, CST opener) {
 		case CST::TK_BRACKET_CLOSE: {
 			if (opener == CST::TK_BRACKET_OPEN) end = true;
 			//else { cur_expression += ")"; INCPOS(1); }
-			else { _unexpeced_token_error(); }
+			else { end = true; }
 			break;
 		}
 		case CST::TK_CURLY_BRACKET_CLOSE: { // for initialization block: var x = new { a = EXPR };
 			if (opener == CST::TK_CURLY_BRACKET_OPEN) end = true;
 			//else { cur_expression += "}"; INCPOS(1); }
-			else { _unexpeced_token_error(); }
+			else { end = true; }
 			break;
 		}
 		case CST::TK_CURLY_BRACKET_OPEN: {
@@ -1806,6 +1818,16 @@ bool CSharpParser::_parse_interface_member(InterfaceNode* node) {
 	return true;
 }
 
+CSharpParser::NamespaceNode::~NamespaceNode()
+{
+	SCAN_AND_DELETE(namespaces);
+	SCAN_AND_DELETE(classes);
+	SCAN_AND_DELETE(structures);
+	SCAN_AND_DELETE(interfaces);
+	SCAN_AND_DELETE(enums);
+	SCAN_AND_DELETE(delegates);
+}
+
 void CSharpParser::NamespaceNode::print(int indent) const {
 
 	indentation(indent);
@@ -1861,6 +1883,7 @@ CSharpParser::VarNode* CSharpParser::_parse_declaration() {
 			return variable;
 		}
 		// int x = expr;
+		_assert(CST::TK_OP_ASSIGN);
 		INCPOS(1); // skip '='
 		string expression = _parse_expression();
 		variable->value = expression;
@@ -2316,7 +2339,17 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 				VarNode *variable = _parse_declaration();
 				DeclarationNode* node = new DeclarationNode(td);
 				node->variable = variable;
-				INCPOS(1); // skip ';'
+				
+				if (_is_actual_token(CST::TK_SEMICOLON)) {
+					// finished normally
+					INCPOS(1); // skip ';'
+				}
+				else if (_is_actual_token(CST::TK_CURLY_BRACKET_CLOSE)) {
+					// finished probably with errors -> don't skip,
+					// this is closing '}' for some outer block
+					;
+				}
+				// TODO?? else: error ?
 
 				return node;
 			}
@@ -2664,6 +2697,18 @@ void CSharpParser::ClassNode::print(int indent) const {
 	if (structures.size() > 0)	for (StructNode* x : structures)	x->print(indent + TAB);
 }
 
+CSharpParser::StructNode::~StructNode()
+{
+	SCAN_AND_DELETE(variables);
+	SCAN_AND_DELETE(methods);
+	SCAN_AND_DELETE(classes);
+	SCAN_AND_DELETE(interfaces);
+	SCAN_AND_DELETE(structures);
+	SCAN_AND_DELETE(enums);
+	SCAN_AND_DELETE(properties);
+	SCAN_AND_DELETE(delegates);
+}
+
 void CSharpParser::StructNode::print(int indent) const {
 
 	indentation(indent);
@@ -2754,7 +2799,7 @@ void CSharpParser::VarNode::print(int indent) const {
 
 }
 
-#include "csharp_context.h"
+
 string CSharpParser::VarNode::get_type() const
 {
 	// deduce var type
@@ -2767,8 +2812,9 @@ string CSharpParser::VarNode::get_type() const
 		if (ctx == nullptr)
 			return wldc;
 
-
-
+		// TODO ! s³abo dzia³a
+		string t = CSharpContext::instance()->simplify_expression(value);
+		return t;
 	}
 
 	string res;
@@ -2789,6 +2835,11 @@ string CSharpParser::VarNode::get_type() const
 	return res;
 }
 
+
+CSharpParser::MethodNode::~MethodNode()
+{
+	SCAN_AND_DELETE(arguments);
+}
 
 void CSharpParser::MethodNode::print(int indent) const {
 
@@ -2815,6 +2866,36 @@ string CSharpParser::MethodNode::fullname() const
 		res += arguments[n - 1]->get_type();
 	}
 	res += ")";
+
+	return res;
+}
+
+string CSharpParser::MethodNode::prettyname() const
+{
+	string res = name;
+	int cur_arg = -1;
+
+	auto csc = CSharpContext::instance();
+	if (csc->cinfo.ctx_cursor != nullptr) {
+		cur_arg = csc->cinfo.completion_info_int;
+	}
+
+	res += '(';
+	int n = arguments.size();
+	for (int i = 0; i < n; i++) {
+		if (i == cur_arg) res += "|>";
+		res += arguments[i]->type;
+		res += " ";
+		res += arguments[i]->name;
+		if (i == cur_arg) res += "<|";
+
+		if (i < n - 1)
+			res += ", ";
+	}
+
+	res += ")";
+	res += " : ";
+	res += return_type;
 
 	return res;
 }
@@ -2870,6 +2951,15 @@ list<CSP::Node*> CSharpParser::VarNode::get_child(const string name, Type t) con
 
 }
 
+string CSharpParser::VarNode::prettyname() const
+{
+	string res = name;
+	res += " : ";
+	res += type;
+
+	return res;
+}
+
 list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars() const
 {
 	list<VarNode*> res;
@@ -2881,6 +2971,12 @@ list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars() const
 		res.push_back(x);
 
 	return res;
+}
+
+CSharpParser::InterfaceNode::~InterfaceNode()
+{
+	SCAN_AND_DELETE(methods);
+	SCAN_AND_DELETE(properties);
 }
 
 void CSharpParser::InterfaceNode::print(int indent) const {
@@ -2914,6 +3010,12 @@ void CSharpParser::EnumNode::print(int indent) const {
 
 }
 
+CSharpParser::PropertyNode::~PropertyNode()
+{
+	delete get_statement;
+	delete set_statement;
+}
+
 void CSharpParser::PropertyNode::print(int indent) const {
 	// TODO
 }
@@ -2937,6 +3039,11 @@ string CSharpParser::Node::fullname() const
 		return name;
 
 	return parent->fullname() + "." + name;
+}
+
+string CSharpParser::Node::prettyname() const
+{
+	return name;
 }
 
 
@@ -3139,9 +3246,20 @@ CSharpParser::Node::~Node()
 {
 	if (active_parser->cinfo.ctx_cursor == this)
 		active_parser->cinfo.ctx_cursor = nullptr;
+	if (active_parser->cinfo.ctx_block == this)
+		active_parser->cinfo.ctx_block = nullptr;
+	if (active_parser->cinfo.ctx_class == this)
+		active_parser->cinfo.ctx_class = nullptr;
+	if (active_parser->cinfo.ctx_namespace == this)
+		active_parser->cinfo.ctx_namespace = nullptr;
 
 }
 
+
+CSharpParser::BlockNode::~BlockNode()
+{
+	SCAN_AND_DELETE(statements);
+}
 
 list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
 {
@@ -3175,6 +3293,36 @@ bool CSharpParser::is_base_type(string type) {
 	for (string x : base_type)
 		if (x == type)
 			return true;
+
+	return false;
+}
+
+
+// mechanizm koercji, czyli zmiana typu automatycznie - bez rzutowania
+// koercja - implicite
+// cast (rzutowanie) - explicite
+bool CSharpParser::coercion_possible(string from, string to)
+{
+	set<string> numeric = {
+		"int", "long", "short",
+		"uint", "ulong", "ushort",
+		"decimal", "double", "float"
+	};
+
+	// numeric -> numeric
+	if (numeric.find(from) != numeric.end() && numeric.find(from) != numeric.end())
+		return true;
+
+	// char -> string	
+	if (from == "char" && to == "string")
+		return true;
+
+	// * -> object
+	if (to == "object")
+		return true;
+
+	// derived -> base
+	// TODO -> return true;
 
 	return false;
 }

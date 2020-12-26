@@ -82,7 +82,6 @@ public:
 	Option node_type_to_option(CSP::Node::Type node_type);
 
 
-
 private:
 	CSharpContext();
 

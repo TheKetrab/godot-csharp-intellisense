@@ -47,7 +47,16 @@ int main() {
 	auto csc = CSharpContext::instance();
 
 	// PARSING
-	csc->update_state(str, filename);
+
+	// memory test
+	for (int i = 0; i < 1000; i++) {
+		if (i % 100 == 0) {
+			int x = 2;
+		}
+		csc->update_state(str, filename);
+	}
+
+
 
 	// PRINT
 	csc->print();

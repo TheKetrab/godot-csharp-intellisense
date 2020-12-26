@@ -104,6 +104,7 @@ class CSharpParser {
 
 		virtual void print(int indent = 0) const = 0;
 		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY(int,Namespace1.ClassY)
+		virtual string prettyname() const; // do wypisywania w intellisense
 		virtual list<NamespaceNode*> get_visible_namespaces() const; // readonly visible namespaces
 		virtual list<TypeNode*> get_visible_types() const;           // readonly visible structures, classess, interfaces, delegates
 		virtual list<MethodNode*> get_visible_methods() const;       // readonly visible methods
@@ -135,7 +136,7 @@ class CSharpParser {
 		vector<DelegateNode*> delegates;
 
 		NamespaceNode(TD td) : Node(Type::NAMESPACE,td) {}
-		~NamespaceNode() {}
+		virtual ~NamespaceNode();
 		void print(int indent = 0) const override;
 
 		virtual list<NamespaceNode*> get_visible_namespaces() const override;
@@ -159,6 +160,7 @@ class CSharpParser {
 		set<string> get_external_identifiers();
 
 		FileNode() : NamespaceNode(CSharpLexer::TokenData()) { node_type = Type::FILE; }
+		virtual ~FileNode();
 		void print(int indent = 0) const override;
 		virtual string fullname() const override;
 	};
@@ -190,7 +192,7 @@ class CSharpParser {
 		vector<PropertyNode*> properties;
 
 		InterfaceNode(TD td) : TypeNode(Type::INTERFACE,td) {}
-		~InterfaceNode() {}
+		virtual ~InterfaceNode();
 		void print(int indent = 0) const override;
 		
 		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
@@ -209,7 +211,7 @@ class CSharpParser {
 		vector<DelegateNode*> delegates;
 
 		StructNode(TD td) : TypeNode(Type::STRUCT,td) {}
-		~StructNode() {}
+		virtual ~StructNode();
 		void print(int indent = 0) const override;
 
 		virtual list<TypeNode*> get_visible_types() const override;
@@ -231,10 +233,11 @@ class CSharpParser {
 		StatementNode* body = nullptr;
 
 		MethodNode(TD td) : TypeNode(Type::METHOD,td) {}
-		~MethodNode() {}
+		virtual ~MethodNode();
 
 		void print(int indent = 0) const override;
 		virtual string fullname() const;
+		virtual string prettyname() const override;
 		virtual string get_return_type() const; // with context
 
 		// NOTE: this method will be visible because will be visible in current class (parrent)
@@ -254,6 +257,9 @@ class CSharpParser {
 		void print(int indent = 0) const override;
 		virtual string get_return_type() const; // with context
 		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
+
+		virtual string prettyname() const override;
+
 
 		string get_type() const;
 
@@ -275,6 +281,7 @@ class CSharpParser {
 		StatementNode* set_statement = nullptr;
 
 		PropertyNode(TD td) : VarNode(td) { node_type = Type::PROPERTY; }
+		virtual ~PropertyNode();
 		void print(int indent = 0) const override;
 	};
 
@@ -301,6 +308,7 @@ class CSharpParser {
 		BlockNode(TD td) : StatementNode(td) { node_type = Type::BLOCK; }
 		vector<StatementNode*> statements;
 
+		virtual ~BlockNode();
 		virtual list<VarNode*> get_visible_vars() const override;
 	};
 
@@ -408,7 +416,7 @@ private:
 
 		// msg
 		string completion_info_str;
-		int completion_info_int = 0;
+		int completion_info_int = -1;
 		string completion_expression;        // wyra¿enie, w którym znaleziono kursor
 
 		// cursor
@@ -443,7 +451,7 @@ public:
 	static void indentation(int n);
 	static map<CSharpLexer::Token, Modifier> to_modifier;
 	static bool is_base_type(string type);
-
+	static bool coercion_possible(string from, string to);
 
 	friend class CSharpContext;
 

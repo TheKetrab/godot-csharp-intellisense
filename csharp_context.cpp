@@ -26,6 +26,20 @@ CSharpContext* CSharpContext::_instance = nullptr;
 // -> jesli nie byl, to jest dodawane
 void CSharpContext::update_state(string &code, string &filename) {
 
+	// delete old
+	auto it = files.find(filename);
+	if (it != files.end()) {
+
+		if (cinfo.ctx_file == it->second) {
+			// clear state
+			this->cinfo = CSP::CompletionInfo();
+		}
+
+		delete it->second;
+		files.erase(it);
+	}
+
+	// add new
 	CSharpParser parser(code);
 	CSP::FileNode* node = parser.parse();
 	node->name = filename;
@@ -112,15 +126,28 @@ void CSharpContext::print_visible() {
 
 		cout << "  " << x->fullname() << " : ";
 
-		if (CSP::is_base_type(x->type))
-			cout << x->type << endl;
+		string type = x->get_type();
+
+		if (CSP::is_base_type(type)) {
+			if (x->type == "var") {
+				cout << "var(" << type << ")" << endl;
+			} else {
+				cout << type << endl;
+			}
+		}
 		else {
-			CSP::TypeNode* tn = get_type_by_name(x->type);
+			
+			CSP::TypeNode* tn = get_type_by_name(type);
 			if (tn == nullptr) {
 				cout << x->type << " [not found]" << endl;
 			}
 			else {
-				cout << tn->fullname() << endl;
+				if (x->type == "var") {
+					cout << "var(" << tn->fullname() << ")" << endl;
+				}
+				else {
+					cout << tn->fullname() << endl;
+				}
 			}
 		}
 
@@ -222,9 +249,11 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 	case (CSharpParser::CompletionType::COMPLETION_MEMBER): {
 		cout << " member" << endl;
 		list<CSharpParser::Node*> nodes = get_nodes_by_expression(cinfo.completion_expression);
-		for (auto x : nodes)
-			options.push_back({ node_type_to_option(x->node_type), x->name });
+		for (auto x : nodes) {
 
+			options.push_back({ node_type_to_option(x->node_type), x->prettyname() });
+
+		}
 
 		break;
 	}
@@ -237,12 +266,8 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 		list<CSharpParser::Node*> nodes = get_nodes_by_expression(cinfo.completion_expression);
 		for (auto x : nodes) {
 
-			string msg = x->name;
-			if (x->node_type == CSP::Node::Type::METHOD) {
-				msg = x->fullname();
-			}
-
-			options.push_back({ node_type_to_option(x->node_type), msg });
+			// TODO filter by coercion CSharpParser::coercion_possible foreach argument
+			options.push_back({ node_type_to_option(x->node_type), x->prettyname() });
 
 		}
 
@@ -446,7 +471,11 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 			// parse arguments' types
 			while (pos < n) {
 				string type = deduce_type(tokens, pos);
-				if (type == "") return res;
+				if (type == "") {
+					res += ")";
+					pos++;
+					break;
+				}
 				res += type;
 
 				// inner parenthesis close
@@ -685,6 +714,7 @@ CSP::Node* CSharpContext::get_by_fullname(string fullname)
 
 }
 
+
 // symulacja DFS przy przechodzeniu po drzewie wêz³ów - szukamy wszystkiego co pasuje
 list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos) {
 
@@ -734,7 +764,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 
 }
 
-// cinfo.ctx_expression najpierw trzeba uproscic, a nastepnie wywolac get_nodes_by_expression
+// cinfo.ctx_expression najpierw trzeba uproscic, a nastepnie wywolac get_nodes_by_simplified_expression
 list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
 {
 	ASSURE_CTX(list<CSP::Node*>());
@@ -754,8 +784,27 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
 	// na pewno nie mamy zamkniêtej funkcji (... method1(int,string). ... ),
 	// bo to zosta³oby uproszczone na typ, który zwraca!
 
+	// albo this - this mo¿e wystêpowæ tylko na pocz¹tku wyra¿enia:
+	// this.member - nigdy nie ma member.this
+
 	list<CSP::Node*> res;
-	list<CSP::Node*> start = find_by_shortcuts(tokens[0].data);
+	list<CSP::Node*> start;
+	if (tokens[0].type == CST::TK_KW_THIS) {
+		CSP::TypeNode* thisClass = CSharpContext::instance()->cinfo.ctx_class;
+		if (thisClass == nullptr)
+		{
+			// TODO error
+		}
+		else {
+			start.push_back(thisClass);
+		}
+	}
+	else {
+
+		// TODO if is identifier
+		start = find_by_shortcuts(tokens[0].data);
+	}
+
 
 	// if found something - resolve
 	if (start.size() > 0) {
@@ -859,7 +908,6 @@ CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_ty
 	}
 
 }
-
 
 
 // put s2 values into s1
