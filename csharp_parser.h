@@ -100,8 +100,6 @@ class CSharpParser {
 		FileNode* get_parent_file();
 		bool is_visible(const vector<string> &redundant_prefix);
 
-
-
 		virtual void print(int indent = 0) const = 0;
 		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY(int,Namespace1.ClassY)
 		virtual string prettyname() const; // do wypisywania w intellisense
@@ -400,7 +398,6 @@ private:
 	string cur_type;
 	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
 
-
 	int pos;                    // position of current token
 	int len;                    // total amount of tokens
 	int modifiers;              // state of flags of modifiers
@@ -415,8 +412,7 @@ private:
 	struct CompletionInfo {
 
 		// msg
-		string completion_info_str;
-		int completion_info_int = -1;
+		int cur_arg = -1;
 		string completion_expression;        // wyra¿enie, w którym znaleziono kursor
 
 		// cursor
@@ -523,8 +519,6 @@ public:
 	int get_position_of_begining(int cur_pos);
 
 };
-
-
 
 
 #endif // CSHARP_PARSER_H

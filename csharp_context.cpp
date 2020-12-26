@@ -9,6 +9,11 @@
 	if (cinfo.ctx_cursor == nullptr) \
 		return def_ret;
 
+
+#define MERGE_SETS(col1,col2) \
+	for (auto x : col2) \
+		col1.insert(x);
+
 string substr(string s, char c) {
 	string res;
 	for (int i = 0; i < s.size() && s[i] != c; i++)
@@ -180,52 +185,52 @@ CSharpContext::CSharpContext() {
 	//_load_xml_assembly(R"(C:\Users\ketra\Desktop\Godot322\godot\bin\GodotSharp\Api\Release\GodotSharp.xml)");
 
 }
-
-bool CSharpContext::_is_assembly_member_line(const string &s, string &res) {
-
-	int pos = 0;
-	while (s[pos] == ' ') pos++;
-
-	string begining = "<member name=\"";
-	for (int i=0; i<14; i++) {
-		if (s[pos] != begining[i]) 
-			return false;
-		pos++;
-	}
-
-	res = "";
-	for (; s[pos] != '\"'; pos++)
-		res += s[pos];
-
-	return true;
-}
-
-void CSharpContext::_load_xml_assembly(string path)
-{
-	ifstream file(path);
-	if (!file.is_open()) {
-		exit(1); // TODO
-	}
-
-	string line;
-	string res;
-
-	while (!file.eof()) {
-
-		line = "";
-		getline(file, line);
-
-		if (_is_assembly_member_line(line,res)) {
-			if      (res[0] == 'T') assembly_info_t.push_back(res);
-			else if (res[0] == 'P') assembly_info_p.push_back(res);
-			else if (res[0] == 'M') assembly_info_m.push_back(res);
-			else if (res[0] == 'F') assembly_info_f.push_back(res);
-		}
-
-		
-
-	}
-}
+//
+//bool CSharpContext::_is_assembly_member_line(const string &s, string &res) {
+//
+//	int pos = 0;
+//	while (s[pos] == ' ') pos++;
+//
+//	string begining = "<member name=\"";
+//	for (int i=0; i<14; i++) {
+//		if (s[pos] != begining[i]) 
+//			return false;
+//		pos++;
+//	}
+//
+//	res = "";
+//	for (; s[pos] != '\"'; pos++)
+//		res += s[pos];
+//
+//	return true;
+//}
+//
+//void CSharpContext::_load_xml_assembly(string path)
+//{
+//	ifstream file(path);
+//	if (!file.is_open()) {
+//		exit(1); // TODO
+//	}
+//
+//	string line;
+//	string res;
+//
+//	while (!file.eof()) {
+//
+//		line = "";
+//		getline(file, line);
+//
+//		if (_is_assembly_member_line(line,res)) {
+//			if      (res[0] == 'T') assembly_info_t.push_back(res);
+//			else if (res[0] == 'P') assembly_info_p.push_back(res);
+//			else if (res[0] == 'M') assembly_info_m.push_back(res);
+//			else if (res[0] == 'F') assembly_info_f.push_back(res);
+//		}
+//
+//		
+//
+//	}
+//}
 
 CSharpContext::~CSharpContext() {}
 
@@ -273,7 +278,7 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 
 
 		//string func_name = cinfo.completion_info_str;
-		int cur_arg = cinfo.completion_info_int;
+		int cur_arg = cinfo.cur_arg;
 
 		// TODO get functions by name
 		// TODO add signature of function
@@ -303,12 +308,12 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 		set<string> keywords = CSharpLexer::get_keywords();
 		set<string> ctx_file_identifiers = cinfo.ctx_file->identifiers;
 		
-		my_merge(identifiers, keywords);
-		my_merge(identifiers, ctx_file_identifiers);
+		MERGE_SETS(identifiers, keywords);
+		MERGE_SETS(identifiers, ctx_file_identifiers);
 
 		for (auto f : files) {
 			set<string> s = f.second->get_external_identifiers();
-			my_merge(identifiers, s);
+			MERGE_SETS(identifiers, s);
 		}
 		
 		for (auto v : identifiers) {
@@ -523,56 +528,56 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 	return res;
 }
 
-
-// zwraca np:
-// Namespace1.Namespace2.Class1.Class2 - typ
-// Namespace1.Class1.ConcreteMethod - metoda
-// 'Class1.Class2.Prop1' -> int - typ w³aœciwoœci Prop1 czyli np int
 //
-// C1.M1(int,string) --> T', gdzie T' to typ zwracany przez to przeci¹¿enie M1
+//// zwraca np:
+//// Namespace1.Namespace2.Class1.Class2 - typ
+//// Namespace1.Class1.ConcreteMethod - metoda
+//// 'Class1.Class2.Prop1' -> int - typ w³aœciwoœci Prop1 czyli np int
+////
+//// C1.M1(int,string) --> T', gdzie T' to typ zwracany przez to przeci¹¿enie M1
+////
+//// C() zwraca typ C', E to jakaœ funkcja w C'.D, x to zmienna typu int
+//// A.B.C().D.E(x, --> C'.D.E(int  --> bêdzie to trzeba próbowaæ dopasowaæ
+////
+//// TODO dodac obslugiwanie blokow expr { }
+//string CSharpContext::deduce(const string &expr, int &pos)
+//{
+//	// rekurencyjna funkcja iteruje sie po stringu expr i dedukuje aktualny typ (fullname)
 //
-// C() zwraca typ C', E to jakaœ funkcja w C'.D, x to zmienna typu int
-// A.B.C().D.E(x, --> C'.D.E(int  --> bêdzie to trzeba próbowaæ dopasowaæ
+//	// "N1.C1.GetSth()" -> typ, ktory zwraca GetSth
+//	// "N1.C1.GetSth(...) - wchodzi rekurencyjnie do œrodka
 //
-// TODO dodac obslugiwanie blokow expr { }
-string CSharpContext::deduce(const string &expr, int &pos)
-{
-	// rekurencyjna funkcja iteruje sie po stringu expr i dedukuje aktualny typ (fullname)
-
-	// "N1.C1.GetSth()" -> typ, ktory zwraca GetSth
-	// "N1.C1.GetSth(...) - wchodzi rekurencyjnie do œrodka
-
-	string deduced = "";
-
-	while (expr[pos] != '\0') {
-
-		// inner context - argument of a function
-		if (expr[pos+1] == ',' || expr[pos+1] == ')') {
-			return map_to_type(deduced);
-		}
-
-		// outer ctx
-		else if (expr[pos] == '(') {
-			deduced += '(';
-			pos++;
-			deduced += deduce(expr, pos);
-		}
-
-		else if (expr[pos] == ')') {
-			deduced += ')';
-			deduced = 
-			pos++;
-		}
-
-		else {
-			deduced += expr[pos];
-			pos++;
-		}
-
-	}
-
-	return deduced;
-}
+//	string deduced = "";
+//
+//	while (expr[pos] != '\0') {
+//
+//		// inner context - argument of a function
+//		if (expr[pos+1] == ',' || expr[pos+1] == ')') {
+//			return map_to_type(deduced);
+//		}
+//
+//		// outer ctx
+//		else if (expr[pos] == '(') {
+//			deduced += '(';
+//			pos++;
+//			deduced += deduce(expr, pos);
+//		}
+//
+//		else if (expr[pos] == ')') {
+//			deduced += ')';
+//			deduced = 
+//			pos++;
+//		}
+//
+//		else {
+//			deduced += expr[pos];
+//			pos++;
+//		}
+//
+//	}
+//
+//	return deduced;
+//}
 
 list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
 {
@@ -908,14 +913,3 @@ CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_ty
 	}
 
 }
-
-
-// put s2 values into s1
-void CSharpContext::my_merge(set<string> &s1, const set<string> &s2) {
-
-	for (auto v : s2)
-		s1.insert(v);
-
-}
-
-

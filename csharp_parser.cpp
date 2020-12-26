@@ -14,6 +14,8 @@ CSharpParser* active_parser; // TODO !!! wyrzucic to brzydkie rozwi¹zanie - albo
 #define INCPOS(ammount) { pos += ammount; }
 
 
+#define csc CSharpContext::instance()
+
 #define SCAN_AND_ADD(collection) \
 	for (auto x : collection) \
 		if (x->name == name || name == "") \
@@ -24,20 +26,6 @@ CSharpParser* active_parser; // TODO !!! wyrzucic to brzydkie rozwi¹zanie - albo
 		delete x;
 
 const string CSharpParser::wldc = "?"; // Wild Cart Type
-
-template <typename T, typename U>
-void append(list<T*>& lst, const vector<U*> &vec)
-{
-	for (const auto x : vec)
-		lst.push_back(x);
-}
-
-template <typename T, typename U>
-void append(list<T*>& lst, const list<U*> &l)
-{
-	for (const auto x : l)
-		lst.push_back(x);
-}
 
 
 void CSharpParser::_found_cursor() {
@@ -135,6 +123,58 @@ std::map<CST, CSM> CSharpParser::to_modifier = {
 	{ CST::TK_KW_OUT,           CSM::MOD_OUT },
 	{ CST::TK_KW_PARAMS,        CSM::MOD_PARAMS }
 };
+
+
+template <typename T, typename U>
+void append(list<T*>& lst, const vector<U*> &vec)
+{
+	for (const auto x : vec)
+		lst.push_back(x);
+}
+
+template <typename T, typename U>
+void append(list<T*>& lst, const list<U*> &l)
+{
+	for (const auto x : l)
+		lst.push_back(x);
+}
+
+string join_vector(const vector<string> &v, const string &joiner)
+{
+	int n = v.size();
+	if (n == 0) return "";
+
+	string res = v[0];
+	for (int i = 1; i < n; i++)
+		res += joiner + v[i];
+
+	return res;
+}
+
+list<CSharpParser::TypeNode*> to_safe_list2(const vector<CSharpParser::TypeNode*>& vec)
+{
+	list<CSharpParser::TypeNode*> lst;
+	for (CSharpParser::TypeNode* n : vec)
+		lst.push_back(n);
+
+	return lst;
+}
+
+void CSharpParser::debug_info() const {
+	if (pos == 1549) {
+		int x = 1;
+	}
+	//cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
+}
+
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+//                               ===========================================================                               //
+//                                    ---------------- PARSER'S METHODS ---------------                                    //
+//                               ===========================================================                               //
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+
 
 
 CSharpParser::FileNode* CSharpParser::parse() {
@@ -298,19 +338,6 @@ void CSharpParser::_apply_attributes(CSharpParser::Node* node) {
 	node->attributes = this->attributes; // copy
 }
 
-// it deduces owner class node
-// example: Class1.DoSth -> Class1
-// example: SomeIdentifier.DoSth -> _deduce_type of SomeIdentifier
-// example: Method1().DoSth -> _deduce_type of Method1
-// example: DoSth -> current_class
-string CSharpParser::_deduce_owner_type(int from_pos) {
-
-	// foo1.x(a,s,d()).
-
-
-	return "";
-}
-
 CSharpParser::CompletionType CSharpParser::_deduce_completion_type() {
 
 	CompletionType res = CompletionType::COMPLETION_NONE;
@@ -382,7 +409,7 @@ CSharpParser::CompletionType CSharpParser::_deduce_completion_type() {
 			}
 		}
 
-		cinfo.completion_info_int = cur_argument_number;
+		cinfo.cur_arg = cur_argument_number;
 		break;
 	}
 
@@ -493,50 +520,6 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 
 }
 
-// zwraca zewnetrzne symbole widoczne w pliku
-set<string> CSharpParser::FileNode::get_external_identifiers()
-{
-	set<string> res;
-
-	for (auto n : namespaces) res.insert(n->name);
-	for (auto c : classes)    res.insert(c->name);
-	for (auto s : structures) res.insert(s->name);
-	for (auto i : interfaces) res.insert(i->name);
-	for (auto e : enums)      res.insert(e->name);
-	for (auto d : delegates)  res.insert(d->name);
-
-	return res;
-}
-
-CSharpParser::FileNode::~FileNode()
-{
-}
-
-void CSharpParser::FileNode::print(int indent) const {
-
-	indentation(indent);
-	cout << "FILE " << name << ":" << endl;
-
-	// HEADERS:
-	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "> namespaces:");
-	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "> interfaces:");
-	if (classes.size() > 0)    print_header(indent + TAB, classes,    "> classes:");
-	if (structures.size() > 0) print_header(indent + TAB, structures, "> structures:");
-	if (enums.size() > 0)      print_header(indent + TAB, enums,      "> enums:");
-
-	// NODES:
-	if (namespaces.size() > 0) for (NamespaceNode* x : namespaces) x->print(indent + TAB);
-	if (interfaces.size() > 0) for (InterfaceNode* x : interfaces) x->print(indent + TAB);
-	if (classes.size() > 0)    for (ClassNode* x : classes)        x->print(indent + TAB);
-	if (structures.size() > 0) for (StructNode* x : structures)    x->print(indent + TAB);
-
-}
-
-string CSharpParser::FileNode::fullname() const
-{
-	return ""; // empty
-}
-
 CSharpParser::FileNode * CSharpParser::_parse_file()
 {
 	FileNode* node = new FileNode();
@@ -571,65 +554,7 @@ void CSharpParser::_skip_until_token(CSharpLexer::Token tk) {
 			INCPOS(1);
 	}
 
-	while (true) {
-
-		switch (GETTOKEN(0)) {
-
-			// TODO standard (error, empty, cursor, eof)
-
-		case CST::TK_BRACKET_OPEN: { // [
-			//this->depth.bracket_depth++;
-			//if (depth == base_depth) 
-			//	;
-			break;
-		}
-		case CST::TK_BRACKET_CLOSE: { // ]
-		}
-		case CST::TK_CURLY_BRACKET_OPEN: { // {
-		}
-		case CST::TK_CURLY_BRACKET_CLOSE: { // }
-		}
-		case CST::TK_PARENTHESIS_OPEN: { // (
-		}
-		case CST::TK_PARENTHESIS_CLOSE: { // )
-		}
-		default: {
-			if (GETTOKEN(0) == tk) {
-
-			}
-		}
-
-
-
-		}
-
-
-	}
-
 }
-
-/* OLD ESCAPE FUNCTION 
-void CSharpParser::_escape() {
-
-	int destination;
-
-	if (cur_block != nullptr)          destination = cur_block->creator.depth;
-	else if (cur_block != nullptr)     destination = cur_block->creator.depth;
-	else if (cur_method != nullptr)    destination = cur_method->creator.depth;
-	else if (cur_class != nullptr)     destination = cur_class->creator.depth;
-	else if (cur_namespace != nullptr) destination = cur_namespace->creator.depth;
-	else                               destination = 0;
-
-	while (true) {
-
-		if (pos >= len) return; // end
-		if (tokens[pos].depth == destination) return;
-
-		INCPOS(1);
-	}
-
-}
-*/
 
 string CSharpParser::completion_type_name(CompletionType type)
 {
@@ -646,8 +571,6 @@ string CSharpParser::completion_type_name(CompletionType type)
 
 	return "";
 }
-
-
 
 vector<string> CSharpParser::_parse_generic_declaration() {
 
@@ -1324,7 +1247,7 @@ CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 }
 
 CSharpParser::DelegateNode* CSharpParser::_parse_delegate() {
-	return nullptr;
+	return nullptr; // TODO
 }
 
 std::string CSharpParser::_parse_type(bool array_constructor) {
@@ -1610,14 +1533,6 @@ bool CSharpParser::_parse_namespace_member(NamespaceNode* node) {
 
 }
 
-void CSharpParser::debug_info() const {
-	if (pos == 1549) {
-		int x = 1;
-	}
-	//cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
-}
-
-
 bool CSharpParser::_parse_class_member(ClassNode* node) {
 
 	debug_info();
@@ -1816,35 +1731,6 @@ bool CSharpParser::_parse_interface_member(InterfaceNode* node) {
 	}
 
 	return true;
-}
-
-CSharpParser::NamespaceNode::~NamespaceNode()
-{
-	SCAN_AND_DELETE(namespaces);
-	SCAN_AND_DELETE(classes);
-	SCAN_AND_DELETE(structures);
-	SCAN_AND_DELETE(interfaces);
-	SCAN_AND_DELETE(enums);
-	SCAN_AND_DELETE(delegates);
-}
-
-void CSharpParser::NamespaceNode::print(int indent) const {
-
-	indentation(indent);
-	cout << "NAMESPACE " << name << ":" << endl;
-
-	// HEADERS:
-	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "> namespaces:");
-	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "> interfaces:");
-	if (classes.size() > 0)    print_header(indent + TAB, classes,    "> classes:");
-	if (structures.size() > 0) print_header(indent + TAB, structures, "> structures:");
-	if (enums.size() > 0)      print_header(indent + TAB, enums,      "> enums:");
-	
-	// NODES:
-	if (namespaces.size() > 0) for (NamespaceNode* x : namespaces) x->print(indent + TAB);
-	if (interfaces.size() > 0) for (InterfaceNode* x : interfaces) x->print(indent + TAB);
-	if (classes.size() > 0)    for (ClassNode* x : classes)        x->print(indent + TAB);
-	if (structures.size() > 0) for (StructNode* x : structures)    x->print(indent + TAB);
 }
 
 CSharpParser::VarNode* CSharpParser::_parse_declaration() {
@@ -2676,61 +2562,195 @@ CSharpParser::~CSharpParser() {
 
 }
 
-void CSharpParser::ClassNode::print(int indent) const {
 
-	indentation(indent);
-	cout << "CLASS " << name << ":" << endl;
 
-	// HEADERS:
-	if (base_types.size() > 0)  print_header(indent + TAB, base_types, "> base types:");
-	if (interfaces.size() > 0)	print_header(indent + TAB, interfaces, "> interfaces:");
-	if (classes.size() > 0)		print_header(indent + TAB, classes,    "> classes:");
-	if (structures.size() > 0)	print_header(indent + TAB, structures, "> structures:");
-	if (enums.size() > 0)		print_header(indent + TAB, enums,      "> enums:");
-	if (methods.size() > 0)		print_header(indent + TAB, methods,    "> methods:");
-	if (properties.size() > 0)	print_header(indent + TAB, properties, "> properties:");
-	if (variables.size() > 0)	print_header(indent + TAB, variables,  "> variables:");
-	
-	// NODES:
-	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
-	if (classes.size() > 0)		for (ClassNode* x : classes)		x->print(indent + TAB);
-	if (structures.size() > 0)	for (StructNode* x : structures)	x->print(indent + TAB);
+
+
+
+// escape ustawi kursor zaraz ZA odpowiedni '}'
+void CSharpParser::_escape() {
+
+	if (cur_block != nullptr)          _skip_until_end_of_block();
+	else if (cur_class != nullptr)     _skip_until_end_of_class();
+	else if (cur_namespace != nullptr) _skip_until_end_of_namespace();
+
 }
 
-CSharpParser::StructNode::~StructNode()
+void CSharpParser::_skip_until_end_of_block() {
+
+	if (cur_block == nullptr) return;
+	int dest_depth = cur_block->creator.depth;
+	while (pos < len && tokens[pos].depth > dest_depth) pos++;
+	pos++; // skip '}'
+}
+
+void CSharpParser::_skip_until_end_of_class() {
+
+	if (cur_class == nullptr) return;
+	int dest_depth = cur_class->creator.depth;
+	while (pos < len && tokens[pos].depth > dest_depth) pos++;
+	pos++; // skip '}'
+}
+
+void CSharpParser::_skip_until_end_of_namespace() {
+
+	if (cur_namespace == nullptr) return;
+	int dest_depth = cur_namespace->creator.depth;
+	while (pos < len && tokens[pos].depth > dest_depth) pos++;
+	pos++; // skip '}'
+}
+
+void CSharpParser::_skip_until_next_line() {
+
+	int cur_line = tokens[pos].line;
+	while (pos < len && tokens[pos].line == cur_line) pos++;
+
+}
+
+
+
+bool CSharpParser::is_base_type(string type) {
+
+	string base_type[] = {
+		"bool", "byte",
+		"char", "string",
+		"decimal", "double", "float",
+		"int", "long", "short",
+		"uint", "ulong", "ushort",
+		"void", "object"
+	};
+
+	for (string x : base_type)
+		if (x == type)
+			return true;
+
+	return false;
+}
+
+
+// mechanizm koercji, czyli zmiana typu automatycznie - bez rzutowania
+// koercja - implicite
+// cast (rzutowanie) - explicite
+bool CSharpParser::coercion_possible(string from, string to)
 {
-	SCAN_AND_DELETE(variables);
-	SCAN_AND_DELETE(methods);
-	SCAN_AND_DELETE(classes);
-	SCAN_AND_DELETE(interfaces);
-	SCAN_AND_DELETE(structures);
-	SCAN_AND_DELETE(enums);
-	SCAN_AND_DELETE(properties);
-	SCAN_AND_DELETE(delegates);
+	set<string> numeric = {
+		"int", "long", "short",
+		"uint", "ulong", "ushort",
+		"decimal", "double", "float"
+	};
+
+	// numeric -> numeric
+	if (numeric.find(from) != numeric.end() && numeric.find(from) != numeric.end())
+		return true;
+
+	// char -> string	
+	if (from == "char" && to == "string")
+		return true;
+
+	// * -> object
+	if (to == "object")
+		return true;
+
+	// derived -> base
+	// TODO -> return true;
+
+	return false;
 }
 
-void CSharpParser::StructNode::print(int indent) const {
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+//                               ===========================================================                               //
+//                                    ----------------  NODES FUNCTIONS ---------------                                    //
+//                               ===========================================================                               //
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+// ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+
+void CSharpParser::Node::print_header(int indent, const vector<string> &v, string title) const {
 
 	indentation(indent);
-	cout << "STRUCT " << name << ":" << endl;
-
-	// HEADERS:
-	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
-	if (interfaces.size() > 0)	   print_header(indent + TAB, interfaces, "> interfaces:");
-	if (classes.size() > 0)		   print_header(indent + TAB, classes,    "> classes:");
-	if (structures.size() > 0)	   print_header(indent + TAB, structures, "> structures:");
-	if (enums.size() > 0)		   print_header(indent + TAB, enums,      "> enums:");
-	if (methods.size() > 0)		   print_header(indent + TAB, methods,    "> methods:");
-	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
-	if (variables.size() > 0)	   print_header(indent + TAB, variables,  "> variables:");
-	
-	// NODES:
-	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
-	if (classes.size() > 0)		for (ClassNode* x : classes)		x->print(indent + TAB);
-	if (structures.size() > 0)	for (StructNode* x : structures)	x->print(indent + TAB);
+	cout << title;
+	for (string x : v)
+		cout << " " << x;
+	cout << endl;
 }
 
-list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types() const
+CSharpParser::Node::Node(Type t, TD td) {
+	this->creator = td;
+	this->node_type = t;
+}
+
+CSharpParser::Node::~Node()
+{
+	if (active_parser->cinfo.ctx_cursor == this)
+		active_parser->cinfo.ctx_cursor = nullptr;
+	if (active_parser->cinfo.ctx_block == this)
+		active_parser->cinfo.ctx_block = nullptr;
+	if (active_parser->cinfo.ctx_class == this)
+		active_parser->cinfo.ctx_class = nullptr;
+	if (active_parser->cinfo.ctx_namespace == this)
+		active_parser->cinfo.ctx_namespace = nullptr;
+
+}
+
+
+CSharpParser::BlockNode::~BlockNode()
+{
+	SCAN_AND_DELETE(statements);
+}
+
+list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
+{
+	list<VarNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_vars();
+
+	// all statements in current block are BEFORE cursor
+	for (StatementNode* node : statements) {
+
+		// declaration -> add variable to visibles
+		if (node->node_type == Type::DECLARATION)
+			res.push_back(((DeclarationNode*)node)->variable);
+
+	}
+
+	return res;
+}
+
+
+// czy w tym wêŸle widaæ ca³y prefix?
+bool CSharpParser::Node::is_visible(const vector<string>& redundant_prefix)
+{
+	FileNode* file_node = get_parent_file();
+
+	if (file_node == nullptr)
+		return false;
+
+	string joined = join_vector(redundant_prefix, ".");
+	file_node->using_directives;
+	file_node->using_static_direcvites;
+
+	// jedŸ rownoczesnie po drzewie i wektorze i szukaj
+	int n = redundant_prefix.size();
+	Node* temp = file_node;
+
+	for (int i = 0; i < n; i++) {
+
+		// TODO
+		//Node* child = temp->get_child(redundant_prefix[i]);
+		//if (child == nullptr) return false;
+		//else temp = child;
+	}
+
+	return true;
+}
+
+list<CSP::Node*> CSharpParser::Node::get_members() const
+{
+	return list<Node*>();
+}
+
+
+list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types() const
 {
 	list<TypeNode*> res;
 	if (parent != nullptr)
@@ -2744,168 +2764,52 @@ list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types() cons
 	return res;
 }
 
-list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods() const
+
+
+list<CSharpParser::Node*> CSharpParser::NamespaceNode::get_child(const string name, Type t) const
 {
-	list<MethodNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_methods();
+	list<CSharpParser::Node*> res;
 
-	append(res, methods);
-
-	return res;
-}
-
-list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars() const
-{
-	list<VarNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_vars();
-
-	append(res, variables);
-	append(res, properties);
-
-	return res;
-}
-
-list<CSharpParser::Node*> CSharpParser::StructNode::get_child(const string name, Type t) const
-{
-	list<Node*> res;
-	SCAN_AND_ADD(variables);
-	SCAN_AND_ADD(methods);
+	SCAN_AND_ADD(namespaces);
 	SCAN_AND_ADD(classes);
-	SCAN_AND_ADD(interfaces);
 	SCAN_AND_ADD(structures);
+	SCAN_AND_ADD(interfaces);
 	SCAN_AND_ADD(enums);
-	SCAN_AND_ADD(properties);
 	SCAN_AND_ADD(delegates);
-	SCAN_AND_ADD(variables);
 
 	return res;
 }
 
-void CSharpParser::StatementNode::print(int indent) const {
-
-	indentation(indent);
-	cout << "STATEMENT" << endl;
-
-}
-
-void CSharpParser::VarNode::print(int indent) const {
-
-	indentation(indent);
-	cout << "VAR: ";
-	if (modifiers & (int)CSM::MOD_CONST) cout << "const ";
-	cout << type << " " << name << endl;
-
-}
-
-
-string CSharpParser::VarNode::get_type() const
+// default
+list<CSharpParser::MethodNode*> CSharpParser::Node::get_visible_methods() const
 {
-	// deduce var type
-	if (type == "var") {
-
-		if (value.empty())
-			return wldc;
-
-		auto ctx = CSharpContext::instance()->cinfo.ctx_cursor;
-		if (ctx == nullptr)
-			return wldc;
-
-		// TODO ! s³abo dzia³a
-		string t = CSharpContext::instance()->simplify_expression(value);
-		return t;
-	}
-
-	string res;
-	if (modifiers & (int)Modifier::MOD_CONST)
-		res = "const ";
-
-	string real_type;
-	// TODO if nie jest base type
-	TypeNode* node = CSharpContext::instance()->get_type_by_name(type);
-	if (node != nullptr)
-		real_type = node->fullname();
-
-	if (real_type.empty())
-		res += type;
-	else
-		res += real_type;
-
-	return res;
-}
-
-
-CSharpParser::MethodNode::~MethodNode()
-{
-	SCAN_AND_DELETE(arguments);
-}
-
-void CSharpParser::MethodNode::print(int indent) const {
-
-	indentation(indent);
-	cout << "METHOD " << return_type << " " << name << endl;
-	cout << "(";
-	for (VarNode* v : arguments)
-		cout << v->type << " " << v->name << " , ";
-	cout << ")" << endl;
-
-}
-
-string CSharpParser::MethodNode::fullname() const
-{
-	string res;
 	if (parent != nullptr)
-		res = parent->fullname() + ".";
+		return parent->get_visible_methods();
 
-	res += name + "(";
-	int n = arguments.size();
-	if (n > 0) {
-		for (int i = 0; i < n - 1; i++)
-			res += arguments[i]->get_type() + ","; // TODO trzeba oszacowac typ np C1 -> N1.N2.C1
-		res += arguments[n - 1]->get_type();
-	}
-	res += ")";
-
-	return res;
+	return list<MethodNode*>();
 }
 
-string CSharpParser::MethodNode::prettyname() const
+// deafult
+list<CSharpParser::VarNode*> CSharpParser::Node::get_visible_vars() const
 {
-	string res = name;
-	int cur_arg = -1;
+	if (parent != nullptr)
+		return parent->get_visible_vars();
 
-	auto csc = CSharpContext::instance();
-	if (csc->cinfo.ctx_cursor != nullptr) {
-		cur_arg = csc->cinfo.completion_info_int;
-	}
-
-	res += '(';
-	int n = arguments.size();
-	for (int i = 0; i < n; i++) {
-		if (i == cur_arg) res += "|>";
-		res += arguments[i]->type;
-		res += " ";
-		res += arguments[i]->name;
-		if (i == cur_arg) res += "<|";
-
-		if (i < n - 1)
-			res += ", ";
-	}
-
-	res += ")";
-	res += " : ";
-	res += return_type;
-
-	return res;
+	return list<VarNode*>();
 }
+
+list<CSharpParser::Node*> CSharpParser::Node::get_child(const string name, Type t) const
+{
+	return list<CSharpParser::Node*>();
+}
+
 
 string CSharpParser::MethodNode::get_return_type() const
 {
 	if (CSP::is_base_type(return_type))
 		return return_type;
 	else {
-		CSP::TypeNode* tn = CSharpContext::instance()->get_type_by_name(return_type);
+		CSP::TypeNode* tn = csc->get_type_by_name(return_type);
 		if (tn == nullptr) {
 			return return_type; // TODO error? not found
 		}
@@ -2922,7 +2826,7 @@ string CSharpParser::VarNode::get_return_type() const
 	if (CSP::is_base_type(type))
 		return type;
 	else {
-		CSP::TypeNode* tn = CSharpContext::instance()->get_type_by_name(type);
+		CSP::TypeNode* tn = csc->get_type_by_name(type);
 		if (tn == nullptr) {
 			return type; // TODO error? not found
 		}
@@ -2941,7 +2845,6 @@ list<CSP::Node*> CSharpParser::VarNode::get_child(const string name, Type t) con
 		return list<CSP::Node*>();
 
 	// else -> cast to TypeNode and get members
-	auto csc = CSharpContext::instance();
 	auto nodes = csc->get_nodes_by_expression(return_type);
 
 	if (nodes.size() == 0)
@@ -2986,9 +2889,9 @@ void CSharpParser::InterfaceNode::print(int indent) const {
 
 	// HEADERS:
 	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
-	if (methods.size() > 0)		   print_header(indent + TAB, methods,    "> methods:");
+	if (methods.size() > 0)		   print_header(indent + TAB, methods, "> methods:");
 	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
-	
+
 }
 
 list<CSharpParser::Node*> CSharpParser::InterfaceNode::get_child(const string name, Type t) const
@@ -3078,16 +2981,61 @@ list<CSharpParser::NamespaceNode*> CSharpParser::NamespaceNode::get_visible_name
 	return res;
 }
 
-list<CSharpParser::TypeNode*> to_safe_list2(const vector<CSharpParser::TypeNode*>& vec)
-{
-	list<CSharpParser::TypeNode*> lst;
-	for (CSharpParser::TypeNode* n : vec)
-		lst.push_back(n);
+void CSharpParser::ClassNode::print(int indent) const {
 
-	return lst;
+	indentation(indent);
+	cout << "CLASS " << name << ":" << endl;
+
+	// HEADERS:
+	if (base_types.size() > 0)  print_header(indent + TAB, base_types, "> base types:");
+	if (interfaces.size() > 0)	print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)		print_header(indent + TAB, classes, "> classes:");
+	if (structures.size() > 0)	print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)		print_header(indent + TAB, enums, "> enums:");
+	if (methods.size() > 0)		print_header(indent + TAB, methods, "> methods:");
+	if (properties.size() > 0)	print_header(indent + TAB, properties, "> properties:");
+	if (variables.size() > 0)	print_header(indent + TAB, variables, "> variables:");
+
+	// NODES:
+	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
+	if (classes.size() > 0)		for (ClassNode* x : classes)		x->print(indent + TAB);
+	if (structures.size() > 0)	for (StructNode* x : structures)	x->print(indent + TAB);
 }
 
-list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types() const
+CSharpParser::StructNode::~StructNode()
+{
+	SCAN_AND_DELETE(variables);
+	SCAN_AND_DELETE(methods);
+	SCAN_AND_DELETE(classes);
+	SCAN_AND_DELETE(interfaces);
+	SCAN_AND_DELETE(structures);
+	SCAN_AND_DELETE(enums);
+	SCAN_AND_DELETE(properties);
+	SCAN_AND_DELETE(delegates);
+}
+
+void CSharpParser::StructNode::print(int indent) const {
+
+	indentation(indent);
+	cout << "STRUCT " << name << ":" << endl;
+
+	// HEADERS:
+	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
+	if (interfaces.size() > 0)	   print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)		   print_header(indent + TAB, classes, "> classes:");
+	if (structures.size() > 0)	   print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)		   print_header(indent + TAB, enums, "> enums:");
+	if (methods.size() > 0)		   print_header(indent + TAB, methods, "> methods:");
+	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
+	if (variables.size() > 0)	   print_header(indent + TAB, variables, "> variables:");
+
+	// NODES:
+	if (interfaces.size() > 0)	for (InterfaceNode* x : interfaces)	x->print(indent + TAB);
+	if (classes.size() > 0)		for (ClassNode* x : classes)		x->print(indent + TAB);
+	if (structures.size() > 0)	for (StructNode* x : structures)	x->print(indent + TAB);
+}
+
+list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types() const
 {
 	list<TypeNode*> res;
 	if (parent != nullptr)
@@ -3101,228 +3049,232 @@ list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types() c
 	return res;
 }
 
-
-
-list<CSharpParser::Node*> CSharpParser::NamespaceNode::get_child(const string name, Type t) const
+list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods() const
 {
-	list<CSharpParser::Node*> res;
+	list<MethodNode*> res;
+	if (parent != nullptr)
+		res = parent->get_visible_methods();
 
-	SCAN_AND_ADD(namespaces);
-	SCAN_AND_ADD(classes);
-	SCAN_AND_ADD(structures);
-	SCAN_AND_ADD(interfaces);
-	SCAN_AND_ADD(enums);
-	SCAN_AND_ADD(delegates);
+	append(res, methods);
 
 	return res;
 }
 
-// default
-list<CSharpParser::MethodNode*> CSharpParser::Node::get_visible_methods() const
-{
-	if (parent != nullptr)
-		return parent->get_visible_methods();
-
-	return list<MethodNode*>();
-}
-
-// deafult
-list<CSharpParser::VarNode*> CSharpParser::Node::get_visible_vars() const
-{
-	if (parent != nullptr)
-		return parent->get_visible_vars();
-
-	return list<VarNode*>();
-}
-
-list<CSharpParser::Node*> CSharpParser::Node::get_child(const string name, Type t) const
-{
-	return list<CSharpParser::Node*>();
-}
-
-string join_vector(const vector<string> &v, const string &joiner)
-{
-	int n = v.size();
-	if (n == 0) return "";
-
-	string res = v[0];
-	for (int i = 1; i < n; i++)
-		res += joiner + v[i];
-
-	return res;
-}
-
-// czy w tym wêŸle widaæ ca³y prefix?
-bool CSharpParser::Node::is_visible(const vector<string>& redundant_prefix)
-{
-	FileNode* file_node = get_parent_file();
-
-	if (file_node == nullptr)
-		return false;
-
-	string joined = join_vector(redundant_prefix, ".");
-	file_node->using_directives;
-	file_node->using_static_direcvites;
-
-	// jedŸ rownoczesnie po drzewie i wektorze i szukaj
-	int n = redundant_prefix.size();
-	Node* temp = file_node;
-
-	for (int i = 0; i < n; i++) {
-
-		// TODO
-		//Node* child = temp->get_child(redundant_prefix[i]);
-		//if (child == nullptr) return false;
-		//else temp = child;
-	}
-
-	return true;
-}
-
-list<CSP::Node*> CSharpParser::Node::get_members() const
-{
-	return list<Node*>();
-}
-
-
-
-
-// escape ustawi kursor zaraz ZA odpowiedni '}'
-void CSharpParser::_escape() {
-
-	if (cur_block != nullptr)          _skip_until_end_of_block();
-	else if (cur_class != nullptr)     _skip_until_end_of_class();
-	else if (cur_namespace != nullptr) _skip_until_end_of_namespace();
-
-}
-
-void CSharpParser::_skip_until_end_of_block() {
-
-	if (cur_block == nullptr) return;
-	int dest_depth = cur_block->creator.depth;
-	while (pos < len && tokens[pos].depth > dest_depth) pos++;
-	pos++; // skip '}'
-}
-
-void CSharpParser::_skip_until_end_of_class() {
-
-	if (cur_class == nullptr) return;
-	int dest_depth = cur_class->creator.depth;
-	while (pos < len && tokens[pos].depth > dest_depth) pos++;
-	pos++; // skip '}'
-}
-
-void CSharpParser::_skip_until_end_of_namespace() {
-
-	if (cur_namespace == nullptr) return;
-	int dest_depth = cur_namespace->creator.depth;
-	while (pos < len && tokens[pos].depth > dest_depth) pos++;
-	pos++; // skip '}'
-}
-
-void CSharpParser::_skip_until_next_line() {
-
-	int cur_line = tokens[pos].line;
-	while (pos < len && tokens[pos].line == cur_line) pos++;
-
-}
-
-
-void CSharpParser::Node::print_header(int indent, const vector<string> &v, string title) const {
-
-	indentation(indent);
-	cout << title;
-	for (string x : v)
-		cout << " " << x;
-	cout << endl;
-}
-
-CSharpParser::Node::Node(Type t, TD td) {
-	this->creator = td;
-	this->node_type = t;
-}
-
-CSharpParser::Node::~Node()
-{
-	if (active_parser->cinfo.ctx_cursor == this)
-		active_parser->cinfo.ctx_cursor = nullptr;
-	if (active_parser->cinfo.ctx_block == this)
-		active_parser->cinfo.ctx_block = nullptr;
-	if (active_parser->cinfo.ctx_class == this)
-		active_parser->cinfo.ctx_class = nullptr;
-	if (active_parser->cinfo.ctx_namespace == this)
-		active_parser->cinfo.ctx_namespace = nullptr;
-
-}
-
-
-CSharpParser::BlockNode::~BlockNode()
-{
-	SCAN_AND_DELETE(statements);
-}
-
-list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
+list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars() const
 {
 	list<VarNode*> res;
 	if (parent != nullptr)
 		res = parent->get_visible_vars();
 
-	// all statements in current block are BEFORE cursor
-	for (StatementNode* node : statements) {
-		
-		// declaration -> add variable to visibles
-		if (node->node_type == Type::DECLARATION)
-			res.push_back(((DeclarationNode*)node)->variable);
-
-	}
+	append(res, variables);
+	append(res, properties);
 
 	return res;
 }
 
-bool CSharpParser::is_base_type(string type) {
+list<CSharpParser::Node*> CSharpParser::StructNode::get_child(const string name, Type t) const
+{
+	list<Node*> res;
+	SCAN_AND_ADD(variables);
+	SCAN_AND_ADD(methods);
+	SCAN_AND_ADD(classes);
+	SCAN_AND_ADD(interfaces);
+	SCAN_AND_ADD(structures);
+	SCAN_AND_ADD(enums);
+	SCAN_AND_ADD(properties);
+	SCAN_AND_ADD(delegates);
+	SCAN_AND_ADD(variables);
 
-	string base_type[] = {
-		"bool", "byte",
-		"char", "string",
-		"decimal", "double", "float",
-		"int", "long", "short",
-		"uint", "ulong", "ushort",
-		"void", "object"
-	};
+	return res;
+}
 
-	for (string x : base_type)
-		if (x == type)
-			return true;
+void CSharpParser::StatementNode::print(int indent) const {
 
-	return false;
+	indentation(indent);
+	cout << "STATEMENT" << endl;
+
+}
+
+void CSharpParser::VarNode::print(int indent) const {
+
+	indentation(indent);
+	cout << "VAR: ";
+	if (modifiers & (int)CSM::MOD_CONST) cout << "const ";
+	cout << type << " " << name << endl;
+
 }
 
 
-// mechanizm koercji, czyli zmiana typu automatycznie - bez rzutowania
-// koercja - implicite
-// cast (rzutowanie) - explicite
-bool CSharpParser::coercion_possible(string from, string to)
+string CSharpParser::VarNode::get_type() const
 {
-	set<string> numeric = {
-		"int", "long", "short",
-		"uint", "ulong", "ushort",
-		"decimal", "double", "float"
-	};
+	// deduce var type
+	if (type == "var") {
 
-	// numeric -> numeric
-	if (numeric.find(from) != numeric.end() && numeric.find(from) != numeric.end())
-		return true;
+		if (value.empty())
+			return wldc;
 
-	// char -> string	
-	if (from == "char" && to == "string")
-		return true;
+		auto ctx = csc->cinfo.ctx_cursor;
+		if (ctx == nullptr)
+			return wldc;
 
-	// * -> object
-	if (to == "object")
-		return true;
+		// TODO ! s³abo dzia³a
+		string t = csc->simplify_expression(value);
+		return t;
+	}
 
-	// derived -> base
-	// TODO -> return true;
+	string res;
+	if (modifiers & (int)Modifier::MOD_CONST)
+		res = "const ";
 
-	return false;
+	string real_type;
+	// TODO if nie jest base type
+	TypeNode* node = csc->get_type_by_name(type);
+	if (node != nullptr)
+		real_type = node->fullname();
+
+	if (real_type.empty())
+		res += type;
+	else
+		res += real_type;
+
+	return res;
+}
+
+
+CSharpParser::MethodNode::~MethodNode()
+{
+	SCAN_AND_DELETE(arguments);
+}
+
+void CSharpParser::MethodNode::print(int indent) const {
+
+	indentation(indent);
+	cout << "METHOD " << return_type << " " << name << endl;
+	cout << "(";
+	for (VarNode* v : arguments)
+		cout << v->type << " " << v->name << " , ";
+	cout << ")" << endl;
+
+}
+
+string CSharpParser::MethodNode::fullname() const
+{
+	string res;
+	if (parent != nullptr)
+		res = parent->fullname() + ".";
+
+	res += name + "(";
+	int n = arguments.size();
+	if (n > 0) {
+		for (int i = 0; i < n - 1; i++)
+			res += arguments[i]->get_type() + ","; // TODO trzeba oszacowac typ np C1 -> N1.N2.C1
+		res += arguments[n - 1]->get_type();
+	}
+	res += ")";
+
+	return res;
+}
+
+string CSharpParser::MethodNode::prettyname() const
+{
+	string res = name;
+	int cur_arg = -1;
+
+	if (csc->cinfo.ctx_cursor != nullptr) {
+		cur_arg = csc->cinfo.cur_arg;
+	}
+
+	res += '(';
+	int n = arguments.size();
+	for (int i = 0; i < n; i++) {
+		if (i == cur_arg) res += "|>";
+		res += arguments[i]->type;
+		res += " ";
+		res += arguments[i]->name;
+		if (i == cur_arg) res += "<|";
+
+		if (i < n - 1)
+			res += ", ";
+	}
+
+	res += ")";
+	res += " : ";
+	res += return_type;
+
+	return res;
+}
+
+
+CSharpParser::NamespaceNode::~NamespaceNode()
+{
+	SCAN_AND_DELETE(namespaces);
+	SCAN_AND_DELETE(classes);
+	SCAN_AND_DELETE(structures);
+	SCAN_AND_DELETE(interfaces);
+	SCAN_AND_DELETE(enums);
+	SCAN_AND_DELETE(delegates);
+}
+
+void CSharpParser::NamespaceNode::print(int indent) const {
+
+	indentation(indent);
+	cout << "NAMESPACE " << name << ":" << endl;
+
+	// HEADERS:
+	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "> namespaces:");
+	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)    print_header(indent + TAB, classes, "> classes:");
+	if (structures.size() > 0) print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)      print_header(indent + TAB, enums, "> enums:");
+
+	// NODES:
+	if (namespaces.size() > 0) for (NamespaceNode* x : namespaces) x->print(indent + TAB);
+	if (interfaces.size() > 0) for (InterfaceNode* x : interfaces) x->print(indent + TAB);
+	if (classes.size() > 0)    for (ClassNode* x : classes)        x->print(indent + TAB);
+	if (structures.size() > 0) for (StructNode* x : structures)    x->print(indent + TAB);
+}
+
+
+// zwraca zewnetrzne symbole widoczne w pliku
+set<string> CSharpParser::FileNode::get_external_identifiers()
+{
+	set<string> res;
+
+	for (auto n : namespaces) res.insert(n->name);
+	for (auto c : classes)    res.insert(c->name);
+	for (auto s : structures) res.insert(s->name);
+	for (auto i : interfaces) res.insert(i->name);
+	for (auto e : enums)      res.insert(e->name);
+	for (auto d : delegates)  res.insert(d->name);
+
+	return res;
+}
+
+CSharpParser::FileNode::~FileNode()
+{
+}
+
+void CSharpParser::FileNode::print(int indent) const {
+
+	indentation(indent);
+	cout << "FILE " << name << ":" << endl;
+
+	// HEADERS:
+	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "> namespaces:");
+	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "> interfaces:");
+	if (classes.size() > 0)    print_header(indent + TAB, classes, "> classes:");
+	if (structures.size() > 0) print_header(indent + TAB, structures, "> structures:");
+	if (enums.size() > 0)      print_header(indent + TAB, enums, "> enums:");
+
+	// NODES:
+	if (namespaces.size() > 0) for (NamespaceNode* x : namespaces) x->print(indent + TAB);
+	if (interfaces.size() > 0) for (InterfaceNode* x : interfaces) x->print(indent + TAB);
+	if (classes.size() > 0)    for (ClassNode* x : classes)        x->print(indent + TAB);
+	if (structures.size() > 0) for (StructNode* x : structures)    x->print(indent + TAB);
+
+}
+
+string CSharpParser::FileNode::fullname() const
+{
+	return ""; // empty
 }

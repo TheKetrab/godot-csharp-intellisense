@@ -15,6 +15,8 @@ class completion_error : exception {
 
 };
 
+// https://docs.microsoft.com/en-us/archive/msdn-magazine/2019/october/csharp-accessing-xml-documentation-via-reflection
+
 class CSharpContext {
   public:
 	enum class Option {
@@ -28,25 +30,20 @@ class CSharpContext {
 		KIND_LABEL
 	};
 
-  //private:
-	public:
-	unordered_map<string, CSP::FileNode*> files; // dane o plikach przez nazwe
+private:
 	static CSharpContext* _instance;
-
-	CSP::CompletionInfo cinfo;
-
-	vector<string> assembly_info_t;
-	vector<string> assembly_info_p;
-	vector<string> assembly_info_m;
-	vector<string> assembly_info_f;
+	CSharpContext();
 
 public:
 	static CSharpContext* instance();
 	~CSharpContext();
+	unordered_map<string, CSP::FileNode*> files; // dane o plikach przez nazwe
+	CSP::CompletionInfo cinfo;
 
 	void update_state(string &code, string &filename);
 	CSP::CompletionType get_completion_type();
 
+	// get in context
 	list<CSP::NamespaceNode*> get_visible_namespaces();
 	list<CSP::TypeNode*> get_visible_types();
 	list<CSP::MethodNode*> get_visible_methods();
@@ -57,21 +54,21 @@ public:
 	CSP::VarNode* get_var_by_name(string name);
 	CSP::Node* get_by_fullname(string fullname);
 
-
 	list<CSP::Node*> find_by_shortcuts(string shortname);
+
+	// debug info
 	void print_shortcuts();
 	void print();
 	void print_visible();
 
+	// options
 	vector<pair<Option, string>> get_options();
 	void print_options();
 	string option_to_string(Option opt);
+	Option node_type_to_option(CSP::Node::Type node_type);
 
-
-	// dedukuje typ wyrazenia
-	string deduce(const string &expr, int &pos); // TODO wywalic
+	// deduction
 	string map_to_type(string type_expr);
-
 	string simplify_expression(const string expr);
 	string deduce_type(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
@@ -79,20 +76,7 @@ public:
 	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
 	list<CSP::Node*> get_nodes_by_expression(string expr);
 	list<CSP::Node*> get_visible_in_ctx_by_name(string name);
-	Option node_type_to_option(CSP::Node::Type node_type);
 
-
-private:
-	CSharpContext();
-
-	// https://docs.microsoft.com/en-us/archive/msdn-magazine/2019/october/csharp-accessing-xml-documentation-via-reflection
-	// Methods M; Types T; Fields F; Properties P; Constructors M; Events E.
-	//
-	bool _is_assembly_member_line(const string &s, string &res);
-	void _load_xml_assembly(string path);
-
-
-	void my_merge(set<string> &s1, const set<string> &s2);
 };
 
 #endif // CSHARP_CONTEXT_H
