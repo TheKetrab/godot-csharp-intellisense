@@ -216,6 +216,8 @@ class CSharpParser {
 		virtual list<MethodNode*> get_visible_methods() const override;
 		virtual list<VarNode*> get_visible_vars() const override;
 		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
+		list<MethodNode*> get_constructors() const;
+
 	};
 
 	struct ClassNode : public StructNode {

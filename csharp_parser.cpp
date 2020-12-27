@@ -1,5 +1,7 @@
 #include "csharp_parser.h"
 #include "csharp_context.h"
+#include "csharp_utils.h"
+
 #include <iostream>
 
 using CST = CSharpLexer::Token;
@@ -14,16 +16,6 @@ CSharpParser* active_parser; // TODO !!! wyrzucic to brzydkie rozwi¹zanie - albo
 #define INCPOS(ammount) { pos += ammount; }
 
 
-#define csc CSharpContext::instance()
-
-#define SCAN_AND_ADD(collection) \
-	for (auto x : collection) \
-		if (x->name == name || name == "") \
-			res.push_back(x);
-
-#define SCAN_AND_DELETE(collection) \
-	for (auto x : collection) \
-		delete x;
 
 const string CSharpParser::wldc = "?"; // Wild Cart Type
 
@@ -2640,7 +2632,7 @@ bool CSharpParser::coercion_possible(string from, string to)
 	};
 
 	// numeric -> numeric
-	if (numeric.find(from) != numeric.end() && numeric.find(from) != numeric.end())
+	if (numeric.find(from) != numeric.end() && numeric.find(to) != numeric.end())
 		return true;
 
 	// char -> string	
@@ -2809,12 +2801,12 @@ string CSharpParser::MethodNode::get_return_type() const
 	if (CSP::is_base_type(return_type))
 		return return_type;
 	else {
-		CSP::TypeNode* tn = csc->get_type_by_name(return_type);
-		if (tn == nullptr) {
+		list<CSP::TypeNode*> tn = csc->get_types_by_name(return_type);
+		if (tn.empty()) {
 			return return_type; // TODO error? not found
 		}
 		else {
-			return tn->fullname();
+			return tn.front()->fullname();
 		}
 	}
 
@@ -2826,12 +2818,12 @@ string CSharpParser::VarNode::get_return_type() const
 	if (CSP::is_base_type(type))
 		return type;
 	else {
-		CSP::TypeNode* tn = csc->get_type_by_name(type);
-		if (tn == nullptr) {
+		list<CSP::TypeNode*> tn = csc->get_types_by_name(type);
+		if (tn.empty()) {
 			return type; // TODO error? not found
 		}
 		else {
-			return tn->fullname();
+			return tn.front()->fullname();
 		}
 	}
 
@@ -2840,7 +2832,7 @@ string CSharpParser::VarNode::get_return_type() const
 
 list<CSP::Node*> CSharpParser::VarNode::get_child(const string name, Type t) const
 {
-	string return_type = get_return_type();
+	string return_type = get_type();
 	if (return_type.empty() || is_base_type(return_type))
 		return list<CSP::Node*>();
 
@@ -3088,6 +3080,16 @@ list<CSharpParser::Node*> CSharpParser::StructNode::get_child(const string name,
 	return res;
 }
 
+list<CSP::MethodNode*> CSharpParser::StructNode::get_constructors() const
+{
+	list<CSP::MethodNode*> res;
+	for (auto x : methods)
+		if (x->return_type == this->name)
+			res.push_back(x);
+
+	return res;
+}
+
 void CSharpParser::StatementNode::print(int indent) const {
 
 	indentation(indent);
@@ -3128,9 +3130,9 @@ string CSharpParser::VarNode::get_type() const
 
 	string real_type;
 	// TODO if nie jest base type
-	TypeNode* node = csc->get_type_by_name(type);
-	if (node != nullptr)
-		real_type = node->fullname();
+	list<TypeNode*> nodes = csc->get_types_by_name(type);
+	if ( ! nodes.empty() )
+		real_type = nodes.front()->fullname();
 
 	if (real_type.empty())
 		res += type;

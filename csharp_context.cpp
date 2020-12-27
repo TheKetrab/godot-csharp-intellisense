@@ -1,25 +1,10 @@
 #include "csharp_context.h"
+#include "csharp_utils.h"
 
 #include <fstream>
 #include <string>
 #include <regex>
 #include <algorithm>
-
-#define ASSURE_CTX(def_ret) \
-	if (cinfo.ctx_cursor == nullptr) \
-		return def_ret;
-
-
-#define MERGE_SETS(col1,col2) \
-	for (auto x : col2) \
-		col1.insert(x);
-
-string substr(string s, char c) {
-	string res;
-	for (int i = 0; i < s.size() && s[i] != c; i++)
-		res += s[i];
-	return res;
-}
 
 
 using CST = CSharpLexer::Token;
@@ -116,11 +101,11 @@ void CSharpContext::print_visible() {
 		if (CSP::is_base_type(x->return_type))
 			cout << x->return_type << endl;
 		else {
-			CSP::TypeNode* tn = get_type_by_name(x->return_type);
-			if (tn == nullptr) {
+			list<CSP::TypeNode*> tn = get_types_by_name(x->return_type);
+			if (tn.empty()) {
 				cout << x->return_type << " [not found]" << endl;
 			} else {
-				cout << tn->fullname() << endl;
+				cout << tn.front()->fullname() << endl;
 			}
 		}
 
@@ -142,16 +127,16 @@ void CSharpContext::print_visible() {
 		}
 		else {
 			
-			CSP::TypeNode* tn = get_type_by_name(type);
-			if (tn == nullptr) {
+			list<CSP::TypeNode*> tn = get_types_by_name(type);
+			if (tn.empty()) {
 				cout << x->type << " [not found]" << endl;
 			}
 			else {
 				if (x->type == "var") {
-					cout << "var(" << tn->fullname() << ")" << endl;
+					cout << "var(" << tn.front()->fullname() << ")" << endl;
 				}
 				else {
-					cout << tn->fullname() << endl;
+					cout << tn.front()->fullname() << endl;
 				}
 			}
 		}
@@ -357,11 +342,21 @@ string CSharpContext::option_to_string(Option opt)
 // N1.C1.M1(...) --> zwróci typ, jaki zwraca M1
 // N1.C1.P1 --> zwróci typ, jakiego jest ta w³aœciwoœæ
 // N1.C1.C2 --> zwróci N1
-string CSharpContext::map_to_type(string expr) {
+// ret_wldc = true -> return "?" if not found
+// else -> return the same expr
+string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 
 	// is base type?
 	if (CSP::is_base_type(expr))
 		return expr;
+
+	// is function?
+	if (contains(expr, '(')) {
+
+		return map_function_to_type(expr,ret_wldc);
+
+	}
+
 
 	// find in user's files
 	for (auto f : files) {
@@ -407,10 +402,79 @@ string CSharpContext::map_to_type(string expr) {
 	// TODO: find in external assemblies
 
 	// not found -> return wildcart "?"
-	return expr; // TODO
+	if (ret_wldc) return CSharpParser::wldc;
+	else return expr;
 
 }
 
+string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
+{
+	vector<string> splitted = split_func(func_def);
+
+	string func_name = splitted[0];
+	int n = splitted.size();
+
+	auto nodes = get_methods_by_name(func_name);
+
+	// find method that exactly match
+	for (auto x : nodes) {
+
+		int m = x->arguments.size();
+
+		// przyrównywana metoda musi mieæ przynajmniej tyle argumentów ile func_def (n-1)
+		if (m >= n - 1)
+		{
+			bool success = true;
+			for (int i = 1; i < n; i++) {
+
+				string this_func_arg = splitted[i];
+				string node_func_arg = x->arguments[i - 1]->type;
+
+				if (this_func_arg != node_func_arg) {
+					success = false;
+					break;
+				}
+			}
+			if (success) {
+				return x->return_type;
+			}
+		}
+	}
+
+	// find method that match with implicit casting (coercion)
+	for (auto x : nodes) {
+
+		int m = x->arguments.size();
+
+		if (m >= n - 1)
+		{
+
+			bool success = true;
+			for (int i = 1; i < n; i++) {
+
+				string this_func_arg = splitted[i];
+				string node_func_arg = x->arguments[i - 1]->type;
+
+				if (!CSharpParser::coercion_possible(this_func_arg, node_func_arg)) {
+					success = false;
+					break;
+				}
+			}
+			if (success) {
+				return x->return_type;
+			}
+		}
+
+	}
+
+
+	// none fit
+	if (ret_wldc)
+		return CSharpParser::wldc;
+	else return func_def;
+}
+
+// 
 string CSharpContext::simplify_expression(const string expr)
 {
 	CSharpLexer lexer(expr);
@@ -418,7 +482,7 @@ string CSharpContext::simplify_expression(const string expr)
 	auto tokens = lexer.get_tokens();
 
 	int pos = 0;
-	string res = deduce_type(tokens, pos);
+	string res = simplify_expr_tokens(tokens, pos);
 
 	return res;
 }
@@ -438,11 +502,15 @@ void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &
 			redundant_prefix.push_back(tk);
 			//if (ctx->is_visible(redundant_prefix)) { TODO: ctx jest niedokonczonym obiektem... jakis blad przy parsowaniu
 			//if (ctx_namespace->is_visible(redundant_prefix)) {
-			if (get_type_by_name(tk) != nullptr) {
+			if (!get_types_by_name(tk).empty()) {
 				pos += 2;
-			} else if (cinfo.ctx_file->is_visible(redundant_prefix)) {
-				pos += 2;
-			}
+			} 
+			
+			// TODO: to chyba nie
+			//else if (cinfo.ctx_file->is_visible(redundant_prefix)) {
+			//	pos += 2;
+			//}
+
 			else {
 				end = true;
 			}
@@ -454,8 +522,10 @@ void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &
 
 // dedukuje typ jakiegoœ wyra¿enia, korzystaj¹c z informacji, które ma (np o namespaceach i klasie w której rozwa¿amy to wyra¿enie)
 // additionally: remove redundant - dodatkowo usuwa niepotrzebne: np jeœli N1.N2.C1 a jest to u¿ywane w klasie C1 albo s¹ otwarte te namespace'y (klauzul¹ using) to nie dodawaj do typu
-string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, int &pos)
+string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> &tokens, int &pos)
 {
+	bool prev_include_constructors = this->include_constructors;
+
 	string res;
 	int n = tokens.size();
 
@@ -475,7 +545,7 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 
 			// parse arguments' types
 			while (pos < n) {
-				string type = deduce_type(tokens, pos);
+				string type = simplify_expr_tokens(tokens, pos);
 				if (type == "") {
 					res += ")";
 					pos++;
@@ -516,6 +586,12 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 			end = true;
 		}
 
+		// keyword new
+		else if (tokens[pos].type == CST::TK_KW_NEW) {
+			this->include_constructors = true;
+			pos++;
+		}
+
 		// sth else
 		else {
 
@@ -525,59 +601,11 @@ string CSharpContext::deduce_type(const vector<CSharpLexer::TokenData> &tokens, 
 	}
 
 	res = map_to_type(res);
+
+	//restore
+	this->include_constructors = prev_include_constructors;
 	return res;
 }
-
-//
-//// zwraca np:
-//// Namespace1.Namespace2.Class1.Class2 - typ
-//// Namespace1.Class1.ConcreteMethod - metoda
-//// 'Class1.Class2.Prop1' -> int - typ w³aœciwoœci Prop1 czyli np int
-////
-//// C1.M1(int,string) --> T', gdzie T' to typ zwracany przez to przeci¹¿enie M1
-////
-//// C() zwraca typ C', E to jakaœ funkcja w C'.D, x to zmienna typu int
-//// A.B.C().D.E(x, --> C'.D.E(int  --> bêdzie to trzeba próbowaæ dopasowaæ
-////
-//// TODO dodac obslugiwanie blokow expr { }
-//string CSharpContext::deduce(const string &expr, int &pos)
-//{
-//	// rekurencyjna funkcja iteruje sie po stringu expr i dedukuje aktualny typ (fullname)
-//
-//	// "N1.C1.GetSth()" -> typ, ktory zwraca GetSth
-//	// "N1.C1.GetSth(...) - wchodzi rekurencyjnie do œrodka
-//
-//	string deduced = "";
-//
-//	while (expr[pos] != '\0') {
-//
-//		// inner context - argument of a function
-//		if (expr[pos+1] == ',' || expr[pos+1] == ')') {
-//			return map_to_type(deduced);
-//		}
-//
-//		// outer ctx
-//		else if (expr[pos] == '(') {
-//			deduced += '(';
-//			pos++;
-//			deduced += deduce(expr, pos);
-//		}
-//
-//		else if (expr[pos] == ')') {
-//			deduced += ')';
-//			deduced = 
-//			pos++;
-//		}
-//
-//		else {
-//			deduced += expr[pos];
-//			pos++;
-//		}
-//
-//	}
-//
-//	return deduced;
-//}
 
 list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
 {
@@ -613,8 +641,22 @@ list<CSP::MethodNode*> CSharpContext::get_visible_methods()
 
 	list<CSP::MethodNode*> lst;
 
+	// methods
 	for (auto x : cinfo.ctx_cursor->get_visible_methods())
 		lst.push_back(x);
+
+	// constructors of visible classess
+	if (this->include_constructors) {
+		for (auto x : cinfo.ctx_cursor->get_visible_types()) {
+			if (x->node_type == CSP::Node::Type::STRUCT
+				|| x->node_type == CSP::Node::Type::CLASS)
+			{
+				auto constructors = ((CSP::StructNode*)x)->get_constructors();
+				for (auto y : constructors)
+					lst.push_back(y);
+			}
+		}
+	}
 
 	// TODO: append visible methods from assembly_provider
 
@@ -648,45 +690,40 @@ list<string> CSharpContext::get_visible_labels() {
 }
 
 
-CSP::TypeNode* CSharpContext::get_type_by_name(string name)
+list<CSP::TypeNode*> CSharpContext::get_types_by_name(string name)
 {
-	ASSURE_CTX(nullptr);
+	ASSURE_CTX(list<CSP::TypeNode*>());
+
+	list<CSP::TypeNode*> res;
 
 	// TODO to mo¿na przyspieszyæ szukaj¹c explicite a nie korzystaj¹c z get_visible_types
 	// TODO dodaæ cache dla kontekstu (byæ mo¿e wiele razy odwo³ujemy siê do nazwy danego typu)
 	auto types = get_visible_types();
-	for (auto x : types)
-		if (x->name == name)
-			return x;
+	SCAN_AND_ADD(types);
 
-	// not found
-	return nullptr;
+	return res;
 }
 
-CSP::MethodNode * CSharpContext::get_method_by_name(string name)
+list<CSP::MethodNode*> CSharpContext::get_methods_by_name(string name)
 {
-	ASSURE_CTX(nullptr);
+	ASSURE_CTX(list<CSP::MethodNode*>());
 
+	list<CSP::MethodNode*> res;
 	auto methods = get_visible_methods();
-	for (auto x : methods)
-		if (x->name == name)
-			return x;
+	SCAN_AND_ADD(methods);
 
-	// not found
-	return nullptr;
+	return res;
 }
 
-CSP::VarNode* CSharpContext::get_var_by_name(string name)
+list<CSP::VarNode*> CSharpContext::get_vars_by_name(string name)
 {
-	ASSURE_CTX(nullptr);
+	ASSURE_CTX(list<CSP::VarNode*>());
 
+	list<CSP::VarNode*> res;
 	auto vars = get_visible_vars();
-	for (auto x : vars)
-		if (x->name == name)
-			return x;
+	SCAN_AND_ADD(vars);
 
-	// not found
-	return nullptr;
+	return res;
 }
 
 CSP::Node* CSharpContext::get_by_fullname(string fullname)
@@ -760,8 +797,13 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 	// '('
 	else if (tokens[pos].type == CST::TK_PARENTHESIS_OPEN)
 	{
-		// TODO to jest funkcja, filtruj przez argumenty???
-		res.push_back(invoker);
+		// jesli to funkcja, to na pewno jest niedomknieta, sprawdzmy czy pasuje
+		string function_call;
+		for (int i = pos-1; i < tokens.size()-1; i++)
+			function_call += tokens[i].to_string();
+
+		if (function_match((CSP::MethodNode*)invoker,function_call))
+			res.push_back(invoker);
 
 	}
 
@@ -832,9 +874,12 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
 				auto visible = get_visible_in_ctx_by_name(tokens[0].data);
 				for (auto x : visible) {
 
-					auto children = x->get_child(""); // all children
-					for (auto y : children)
+					auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
+					for (auto y : nodes)
 						res.push_back(y);
+					//auto children = x->get_child(""); // all children
+					//for (auto y : children)
+					//	res.push_back(y);
 
 				}
 
@@ -855,15 +900,13 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 {
 	ASSURE_CTX(list<CSP::Node*>());
 
-	string simplified = simplify_expression(expr);
-	if (simplified.empty() && !expr.empty()) {
-		// zredukowaliœmy N1.C1. do pustego stringa, a chodzi o pokazanie memberów z klasy C1
-		// przywróæ!!!
-		simplified = expr;
+	// jeœli wyra¿enie nie jest proste, to trzeba je uproœciæ
+	// nie proste = jakieœ wywo³anie funkcji
+	if (contains(expr, '(')) {
+		expr = simplify_expression(expr);
 	}
 
-
-	return get_nodes_by_simplified_expression(simplified);
+	return get_nodes_by_simplified_expression(expr);
 }
 
 list<CSP::Node*> CSharpContext::get_visible_in_ctx_by_name(string name)
@@ -887,6 +930,45 @@ list<CSP::Node*> CSharpContext::get_visible_in_ctx_by_name(string name)
 			res.push_back(x);
 
 	return res;
+}
+
+bool CSharpContext::function_match(CSP::MethodNode* method, string function_call)
+{
+	// odpowiednie argumenty albo s¹ dobrego typu, albo mo¿na zrobiæ koercjê
+
+	vector<string> splitted = split_func(function_call);
+
+	string func_name = splitted[0];
+	int n = splitted.size();
+
+	if (func_name != method->name)
+		return false;
+
+	int m = method->arguments.size();
+
+	// metoda musi mieæ przynajmniej tyle argumentow ile to, do czego dopasowujemy
+	if (m < n - 1)
+		return false;
+
+	bool success = true;
+	for (int i = 1; i < n; i++) {
+
+		string this_func_arg = splitted[i];
+		string node_func_arg = method->arguments[i - 1]->type;
+
+		if (this_func_arg != node_func_arg
+			&& !CSharpParser::coercion_possible(this_func_arg, node_func_arg))
+		{
+			success = false;
+			break;
+		}
+	}
+
+	if (success)
+		return true;
+
+	return false;
+
 }
 
 CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_type)
