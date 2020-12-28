@@ -2259,6 +2259,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 			VarNode* variable = _parse_declaration();
 			if (variable != nullptr) {
 				DeclarationNode* node = new DeclarationNode(td);
+				variable->parent = node;
 				node->variable = variable;
 				INCPOS(1); // skip ';'
 				return node;
@@ -2744,6 +2745,7 @@ list<CSP::Node*> CSharpParser::Node::get_members() const
 
 list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types() const
 {
+//	cout << "--- get_visible_types NAMESPACE" << endl;
 	list<TypeNode*> res;
 	if (parent != nullptr)
 		res = parent->get_visible_types();
@@ -2956,6 +2958,8 @@ list<CSharpParser::NamespaceNode*> CSharpParser::Node::get_visible_namespaces() 
 // default
 list<CSharpParser::TypeNode*> CSharpParser::Node::get_visible_types() const
 {
+//	cout << "--- get_visible_types DEFAULT" << endl;
+
 	if (parent != nullptr)
 		return parent->get_visible_types();
 
@@ -3029,6 +3033,8 @@ void CSharpParser::StructNode::print(int indent) const {
 
 list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types() const
 {
+//	cout << "--- get_visible_types STRUCT" << endl;
+
 	list<TypeNode*> res;
 	if (parent != nullptr)
 		res = parent->get_visible_types();

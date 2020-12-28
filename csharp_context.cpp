@@ -715,17 +715,25 @@ list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
 	return lst;
 }
 
+static int cnt = 0;
 list<CSP::TypeNode*> CSharpContext::get_visible_types()
 {
+//	cout << "GET VISIBLE TYPES" << (cnt++) << endl;
+
 	ASSURE_CTX(list<CSP::TypeNode*>());
+//	cout << "after assure ctx" << endl;
 
 	list<CSP::TypeNode*> lst;
 
-	for (auto x : cinfo.ctx_cursor->get_visible_types())
+	auto visible_types = cinfo.ctx_cursor->get_visible_types();
+	for (auto x : visible_types) {
+//		cout << "w petli" << endl;
 		lst.push_back(x);
+	}
 
 	// TODO: append visible types from assembly_provider
 
+//	cout << "return" << endl;
 	return lst;
 }
 
@@ -894,7 +902,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 		// jesli to funkcja, to na pewno jest niedomknieta, sprawdzmy czy pasuje
 		string function_call;
 		for (int i = pos-1; i < tokens.size()-1; i++)
-			function_call += tokens[i].to_string();
+			function_call += tokens[i].to_string(true);
 
 		if (function_match((CSP::MethodNode*)invoker,function_call))
 			res.push_back(invoker);

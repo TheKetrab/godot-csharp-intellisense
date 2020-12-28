@@ -1,5 +1,6 @@
 #include <iostream>
 #include "csharp_lexer.h"
+#include "csharp_utils.h"
 
 using namespace std;
 using CST = CSharpLexer::Token;
@@ -868,8 +869,24 @@ string CSharpLexer::TokenData::to_string(bool typed) const
 	if (typed) {
 
 		switch (type) {
-		case CST::TK_LT_INTEGER:      return "int";
-		case CST::TK_LT_REAL:         return "double";
+		case CST::TK_LT_INTEGER: {
+			bool is_unsigned = (contains(data, 'u') || contains(data, 'U')) ? true : false;
+			bool is_long = (contains(data, 'l') || contains(data, 'L')) ? true : false;
+
+			string res;
+			if (is_unsigned) res += "u";
+
+			if (is_long) res += "long";
+			else res += "int";
+
+			return res;
+		}
+		case CST::TK_LT_REAL: {
+			if (contains(data, 'f') || contains(data, 'F')) return "float";
+			if (contains(data, 'm') || contains(data, 'M')) return "decimal";
+
+			return "double";
+		}
 		case CST::TK_LT_CHAR:         return "char";
 		case CST::TK_LT_STRING:
 		case CST::TK_LT_INTERPOLATED: return "string";
