@@ -311,6 +311,10 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 	}
 
 
+	// remove doubles
+	sort(options.begin(), options.end());
+	options.erase(unique(options.begin(), options.end()), options.end());
+
 	return options;
 }
 
@@ -378,7 +382,7 @@ string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 			// else return the same
 		}
 
-		// try to find by fullname
+		// try to find by fullname or by expression
 		else {
 			CSP::Node* n = get_by_fullname(expr);
 			if (n != nullptr) {
@@ -395,9 +399,31 @@ string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 					return ((CSP::VarNode*)n)->get_return_type();
 				}
 			}
+			else { // find by expression
+
+				auto nodes = get_nodes_by_expression(expr);
+				if (nodes.size() > 0) {
+					CSP::Node* n = nodes.front();
+					switch (n->node_type) {
+					case CSP::Node::Type::ENUM:
+					case CSP::Node::Type::NAMESPACE:
+					case CSP::Node::Type::CLASS:
+					case CSP::Node::Type::INTERFACE:
+						return n->fullname();
+					case CSP::Node::Type::METHOD:
+						return ((CSP::MethodNode*)n)->get_return_type();
+					case CSP::Node::Type::PROPERTY:
+					case CSP::Node::Type::VAR:
+						return ((CSP::VarNode*)n)->get_return_type();
+					}
+				}
+
+			}
 		}
 
 	}
+
+	// find by 
 
 	// TODO: find in external assemblies
 
@@ -414,15 +440,31 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 	string func_name = splitted[0];
 	int n = splitted.size();
 
-	auto nodes = get_methods_by_name(func_name);
+	auto nodesAll = get_nodes_by_simplified_expression(func_name);
+	list<CSP::MethodNode*> nodes;
+	for (auto x : nodesAll)
+		if (x->node_type == CSP::Node::Type::METHOD) {
+			nodes.push_back((CSP::MethodNode*)x);
+		}
+//	auto nodes = get_methods_by_name(func_name);
 
+	// KOLEJNOSC DOPASOWYWANIA:
+	//  (dla funkcji zamkniêtych)
+	// 1. funkcje, które maj¹ dok³adnie wszystkie argumenty i pasuj¹ idealnie
+	// 2. funkcje, które maj¹ dok³adnie wszystkie argumenty i pasuj¹ przez koercjê
+	//  (dla funkcji otwartych)
+	// 3. funkcje, które maj¹ wiêcej argumentów i pasuj¹ idealnie
+	// 4. funkcje, które maj¹ wiêcej argumentów i pasuj¹ przez koercjê
+
+
+	// 1
 	// find method that exactly match
 	for (auto x : nodes) {
 
 		int m = x->arguments.size();
 
-		// przyrównywana metoda musi mieæ przynajmniej tyle argumentów ile func_def (n-1)
-		if (m >= n - 1)
+		// przyrównywana metoda musi mieæ tyle argumentów ile func_def (n-1)
+		if (m == n - 1)
 		{
 			bool success = true;
 			for (int i = 1; i < n; i++) {
@@ -441,12 +483,13 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 		}
 	}
 
+	// 2
 	// find method that match with implicit casting (coercion)
 	for (auto x : nodes) {
 
 		int m = x->arguments.size();
 
-		if (m >= n - 1)
+		if (m == n - 1)
 		{
 
 			bool success = true;
@@ -467,6 +510,58 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 
 	}
 
+	// 3
+	// find method that exactly match
+	for (auto x : nodes) {
+
+		int m = x->arguments.size();
+
+		// przyrównywana metoda musi mieæ przynajmniej tyle argumentów ile func_def (n-1)
+		if (m > n - 1)
+		{
+			bool success = true;
+			for (int i = 1; i < n; i++) {
+
+				string this_func_arg = splitted[i];
+				string node_func_arg = x->arguments[i - 1]->type;
+
+				if (this_func_arg != node_func_arg) {
+					success = false;
+					break;
+				}
+			}
+			if (success) {
+				return x->return_type;
+			}
+		}
+	}
+
+	// 4
+	// find method that match with implicit casting (coercion)
+	for (auto x : nodes) {
+
+		int m = x->arguments.size();
+
+		if (m > n - 1)
+		{
+
+			bool success = true;
+			for (int i = 1; i < n; i++) {
+
+				string this_func_arg = splitted[i];
+				string node_func_arg = x->arguments[i - 1]->type;
+
+				if (!CSharpParser::coercion_possible(this_func_arg, node_func_arg)) {
+					success = false;
+					break;
+				}
+			}
+			if (success) {
+				return x->return_type;
+			}
+		}
+
+	}
 
 	// none fit
 	if (ret_wldc)
@@ -572,8 +667,7 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 			}
 
 			res = map_to_type(res);
-			break;
-
+			
 		}
 
 		// outer parenthesis close
@@ -902,7 +996,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 
 	// jeœli wyra¿enie nie jest proste, to trzeba je uproœciæ
 	// nie proste = jakieœ wywo³anie funkcji
-	if (contains(expr, '(')) {
+	if (contains(expr, ')')) {
 		expr = simplify_expression(expr);
 	}
 

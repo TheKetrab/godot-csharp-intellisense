@@ -71,10 +71,19 @@ public:
 	Option node_type_to_option(CSP::Node::Type node_type);
 
 	// deduction
+	// 
+	// wyra¿enie uproszczone, to takie, które nie ma w sobie ZAMKNIÊTYCH wywo³añ funkcji
+	// zamkniête wywo³anie funkcji, to takie, które ma ')'
+	// jeœli takie wystêpuje, to musimy wydedukowaæ zwracany typ
+	// np: N1.C1.DoSth("abc",42).x -> B.x, przy za³o¿eniu, ¿e DoSth zwraca B
+
+	// uproszczanie
 	string map_to_type(string type_expr, bool ret_wldc = false);
 	string map_function_to_type(string func_def, bool ret_wldc = false);
 	string simplify_expression(const string expr);
 	string simplify_expr_tokens(const vector<CSharpLexer::TokenData> &tokens, int &pos);
+
+	// mapowanie uproszczonych wyra¿eñ na wêz³y
 	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
 	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
