@@ -513,7 +513,8 @@ bool CSharpLexer::_read_number(string& number, Token& type) {
 
 			// another MUST be a digit
 			if (is_number(GETCHAR(1))) {
-				number += '.' + GETCHAR(1);
+				number += '.';
+				number += GETCHAR(1);
 				has_dot = true;
 				INCPOS(2);
 			}

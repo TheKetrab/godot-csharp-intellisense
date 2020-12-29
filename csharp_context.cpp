@@ -396,7 +396,7 @@ string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 					return ((CSP::MethodNode*)n)->get_return_type();
 				case CSP::Node::Type::PROPERTY:
 				case CSP::Node::Type::VAR:
-					return ((CSP::VarNode*)n)->get_return_type();
+					return ((CSP::VarNode*)n)->get_type();
 				}
 			}
 			else { // find by expression
@@ -569,7 +569,6 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 	else return func_def;
 }
 
-// 
 string CSharpContext::simplify_expression(const string expr)
 {
 	CSharpLexer lexer(expr);
@@ -624,7 +623,7 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 	string res;
 	int n = tokens.size();
 
-	skip_redundant_prefix(tokens,pos);
+	//skip_redundant_prefix(tokens,pos);
 
 	bool end = false;
 	while (pos < n && !end) {
@@ -632,7 +631,7 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 		if (tokens[pos].type == CST::TK_EOF)
 			return res;
 
-		//function invokation
+		// function invokation
 		if (tokens[pos].type == CST::TK_PARENTHESIS_OPEN) {
 
 			pos++;
@@ -641,7 +640,7 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 			// parse arguments' types
 			while (pos < n) {
 				string type = simplify_expr_tokens(tokens, pos);
-				if (type == "") {
+				if (type == "") { // end
 					res += ")";
 					pos++;
 					break;
@@ -862,12 +861,15 @@ CSP::Node* CSharpContext::get_by_fullname(string fullname)
 // symulacja DFS przy przechodzeniu po drzewie wêz³ów - szukamy wszystkiego co pasuje
 list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos) {
 
-	ASSURE_CTX(list<CSP::Node*>());
+	// 1. . X   - konkretne dziecko
+	// 2. . EOF - wszystkie dzieci
+	// 3. ( - wywo³ane na funkcji
 
+	ASSURE_CTX(list<CSP::Node*>());
 
 	int n = tokens.size();
 
-	// EXIT IF -> invoker is visible
+	// EXIT IF -> NOTE: invoker is visible
 	if (pos >= n || tokens[pos].type == CST::TK_EOF)
 		return list<CSP::Node*>({ invoker });
 
@@ -875,34 +877,49 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 
 	list<CSP::Node*> res;
 
-	// .X .Y -> skip them, find inside
+	// --- 1: .X .Y -> get concrete child, find inside ---
 	if (tokens[pos].type == CST::TK_PERIOD
 		&& tokens[pos + 1].type == CST::TK_IDENTIFIER)
 	{
 		string child_name = tokens[pos + 1].data;
 		auto children = invoker->get_child(child_name);
 		for (auto x : children) {
-			auto res2 = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
-			for (auto y : res2)
-				res.push_back(y);
+			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
+			MERGE_LISTS(res, res_results);
 		}
 	}
-	// only '.' -> all children
+
+	// --- 2: only '.' -> all children ---
 	else if (tokens[pos].type == CST::TK_PERIOD
 		&& tokens[pos+1].type == CST::TK_EOF)
 	{
-		auto children = invoker->get_child(""); // "" means any child -> see SCAN_AND_ADD macro
-		for (auto x : children) {
-			res.push_back(x);
-		}
+		// "" means any child -> see SCAN_AND_ADD macro
+		auto children = invoker->get_child("");
+		MERGE_LISTS(res, children);
 	}
-	// '('
+
+	// --- 3: '(' not closed function -> resolve args and match ---
 	else if (tokens[pos].type == CST::TK_PARENTHESIS_OPEN)
 	{
 		// jesli to funkcja, to na pewno jest niedomknieta, sprawdzmy czy pasuje
-		string function_call;
-		for (int i = pos-1; i < tokens.size()-1; i++)
-			function_call += tokens[i].to_string(true);
+		string function_call = tokens[pos-1].data + "(";
+
+		string function_arg; // resolve args type
+		for (int i = pos + 1; tokens[i].type != CST::TK_EOF; i++) {
+
+			if (tokens[i].type == CST::TK_COMMA) {
+				string type = map_to_type(function_arg);
+				function_call += type + ',';
+				function_arg = "";
+			}
+			else {
+				function_arg += tokens[i].to_string(true);
+			}
+
+		}
+
+		string type = map_to_type(function_arg);
+		function_call += type;
 
 		if (function_match((CSP::MethodNode*)invoker,function_call))
 			res.push_back(invoker);
@@ -913,86 +930,72 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 
 }
 
-// cinfo.ctx_expression najpierw trzeba uproscic, a nastepnie wywolac get_nodes_by_simplified_expression
-list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr)
-{
-	ASSURE_CTX(list<CSP::Node*>());
+list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr) {
 
-	// N1.C2.  -> zwraca listê memberów C2
-	// N1.C2.Foo( -> zwraca wszystkie funkcje 'Foo' z klasy C2
+	ASSURE_CTX(list<CSP::Node*>());
 
 	CSharpLexer lexer(expr);
 	lexer.tokenize();
 
 	auto tokens = lexer.get_tokens();
-	int n = tokens.size();
+	return get_nodes_by_simplified_expression(tokens);
+}
 
-	// w tym miejscu, skoro to simplified expression,
-	// to mamy albo jakiœ ³añcuch: N1.N2. ... .Nn.C1.C2
-	// albo mamy rozpoczêt¹ funkcjê: N1.C1.method1(int,
-	// na pewno nie mamy zamkniêtej funkcji (... method1(int,string). ... ),
-	// bo to zosta³oby uproszczone na typ, który zwraca!
+// cinfo.ctx_expression najpierw trzeba uproscic, a nastepnie wywolac get_nodes_by_simplified_expression
+list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<CSharpLexer::TokenData> &tokens)
+{
+	// N1.C2.  -> zwraca listê memberów C2
+	// N1.C2.Foo( -> zwraca wszystkie funkcje 'Foo' z klasy C2
 
-	// albo this - this mo¿e wystêpowæ tylko na pocz¹tku wyra¿enia:
-	// this.member - nigdy nie ma member.this
+	// Hence this is simplified expression, there is no ')' token inside.
+	// Posible cases of first token:
+	//   1. this
+	//   2. literal
+	//   3. class-name or namespace-name
+	//   4. variable
 
 	list<CSP::Node*> res;
-	list<CSP::Node*> start;
-	if (tokens[0].type == CST::TK_KW_THIS) {
-		CSP::TypeNode* thisClass = CSharpContext::instance()->cinfo.ctx_class;
-		if (thisClass == nullptr)
-		{
-			// TODO error
-		}
-		else {
-			start.push_back(thisClass);
-		}
-	}
-	else {
+	switch (tokens[0].type) {
 
-		// TODO if is identifier
-		start = find_by_shortcuts(tokens[0].data);
+	// --- 1: this ---
+	case CST::TK_KW_THIS: {
+		CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
+		if (thisClass != nullptr) {
+			auto nodes = get_nodes_by_simplified_expression_rec(thisClass, tokens, 1);
+			MERGE_LISTS(res, nodes);
+		}
+		break;
 	}
 
+	// --- 2: literal ---
+	case CST::TK_LT_CHAR:
+	case CST::TK_LT_INTEGER:
+	case CST::TK_LT_REAL:
+	case CST::TK_LT_STRING:
+	case CST::TK_LT_INTERPOLATED:
+	{
+		// do nothing
+		break;
+	}
 
-	// if found something - resolve
-	if (start.size() > 0) {
+	case CST::TK_IDENTIFIER: {
 
+		list<CSP::Node*> start;
+
+		// --- 3: visible in shortcuts ---
+		auto found_by_shortcuts = find_by_shortcuts(tokens[0].data);
+		MERGE_LISTS(start, found_by_shortcuts);
+
+		// --- 4: variable or resolvable identifier
+		auto found_by_visible = get_visible_in_ctx_by_name(tokens[0].data);
+		MERGE_LISTS(start, found_by_visible);
+
+		// FIND FURTHER
 		for (auto x : start) {
 			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
-			for (auto y : nodes)
-				res.push_back(y);
+			MERGE_LISTS(res, nodes);
 		}
 	}
-
-	// find visible in context
-	else {
-
-		if (n >= 2) {
-
-			// member
-			if (tokens[0].type == CST::TK_IDENTIFIER && tokens[1].type == CST::TK_PERIOD) {
-
-				auto visible = get_visible_in_ctx_by_name(tokens[0].data);
-				for (auto x : visible) {
-
-					auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
-					for (auto y : nodes)
-						res.push_back(y);
-					//auto children = x->get_child(""); // all children
-					//for (auto y : children)
-					//	res.push_back(y);
-
-				}
-
-			}
-			// function invokation
-			else if (tokens[0].type == CST::TK_IDENTIFIER && tokens[1].type == CST::TK_PARENTHESIS_OPEN) {
-				// TODO - czy tu coœ wgl trzeba?
-	
-			}
-
-		}
 	}
 	
 	return res;
@@ -1034,9 +1037,12 @@ list<CSP::Node*> CSharpContext::get_visible_in_ctx_by_name(string name)
 	return res;
 }
 
-bool CSharpContext::function_match(CSP::MethodNode* method, string function_call)
+bool CSharpContext::function_match(CSP::MethodNode* method, string function_call) const
 {
 	// odpowiednie argumenty albo s¹ dobrego typu, albo mo¿na zrobiæ koercjê
+
+	// n-1 - ilosc dotychczas napisanych argumentow przez uzytkownika
+	// m   - ilosc argumentow rozwazanej funkcji
 
 	vector<string> splitted = split_func(function_call);
 
@@ -1072,6 +1078,8 @@ bool CSharpContext::function_match(CSP::MethodNode* method, string function_call
 	return false;
 
 }
+
+
 
 CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_type)
 {

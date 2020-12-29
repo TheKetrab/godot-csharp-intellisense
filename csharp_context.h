@@ -86,12 +86,12 @@ public:
 	// mapowanie uproszczonych wyra¿eñ na wêz³y
 	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
+	list<CSP::Node*> get_nodes_by_simplified_expression(const vector<CSharpLexer::TokenData> &tokens); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
 	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
 	list<CSP::Node*> get_nodes_by_expression(string expr);
 	list<CSP::Node*> get_visible_in_ctx_by_name(string name);
 
-	bool function_match(CSP::MethodNode* method, string function_call);
-
+	bool function_match(CSP::MethodNode* method, string function_call) const;
 };
 
 #endif // CSHARP_CONTEXT_H

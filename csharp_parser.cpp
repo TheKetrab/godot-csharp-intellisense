@@ -906,7 +906,20 @@ string CSharpParser::_parse_expression(bool inside, CST opener) {
 			break;
 		}
 
-		CASELITERAL { cur_expression += TOKENDATA(0); INCPOS(1); break; }
+		CASELITERAL {
+			if (tokens[pos].type == CST::TK_LT_CHAR) {
+				cur_expression += "'" + TOKENDATA(0) + "'";
+			}
+			else if (tokens[pos].type == CST::TK_LT_STRING) {
+				cur_expression += "\"" + TOKENDATA(0) + "\"";
+			}
+			else {
+				cur_expression += TOKENDATA(0);
+			}
+			INCPOS(1);
+			break;
+		}
+
 		case CST::TK_IDENTIFIER: { 
 			
 			// maybe it is a type (MyOwnType)
