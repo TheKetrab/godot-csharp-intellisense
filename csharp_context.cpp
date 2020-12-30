@@ -78,7 +78,7 @@ void CSharpContext::print_visible() {
 
 	cout << endl;
 	cout << " ----- --------- ----- " << endl;
-	cout << "  VISIBLE IN CONTEXT:" << endl;
+	cout << "  VISIBLE IN CONTEXT (VIS_ALL):" << endl;
 	cout << " ----- --------- ----- " << endl;
 	cout << endl;
 
@@ -91,17 +91,17 @@ void CSharpContext::print_visible() {
 		cout << "  " << x->fullname() << endl;
 
 	cout << "TYPES:" << endl;
-	for (auto x : get_visible_types())
+	for (auto x : get_visible_types(VIS_ALL))
 		cout << "  " << x->fullname() << endl;
 
 	cout << "METHODS:" << endl;
-	for (auto x : get_visible_methods()) {
+	for (auto x : get_visible_methods(VIS_ALL)) {
 		cout << "  " << x->fullname() << " : ";
 
 		if (CSP::is_base_type(x->return_type))
 			cout << x->return_type << endl;
 		else {
-			list<CSP::TypeNode*> tn = get_types_by_name(x->return_type);
+			list<CSP::TypeNode*> tn = get_types_by_name(x->return_type, VIS_ALL);
 			if (tn.empty()) {
 				cout << x->return_type << " [not found]" << endl;
 			} else {
@@ -112,7 +112,7 @@ void CSharpContext::print_visible() {
 	}
 
 	cout << "VARIABLES:" << endl;
-	for (auto x : get_visible_vars()) {
+	for (auto x : get_visible_vars(VIS_ALL)) {
 
 		cout << "  " << x->fullname() << " : ";
 
@@ -127,7 +127,7 @@ void CSharpContext::print_visible() {
 		}
 		else {
 			
-			list<CSP::TypeNode*> tn = get_types_by_name(type);
+			list<CSP::TypeNode*> tn = get_types_by_name(type, VIS_ALL);
 			if (tn.empty()) {
 				cout << x->type << " [not found]" << endl;
 			}
@@ -230,7 +230,7 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_TYPE): {
-		auto types = get_visible_types();
+		auto types = get_visible_types(VIS_ALL);
 		for (auto t : types)
 			options.push_back({ Option::KIND_CLASS, t->fullname() });
 
@@ -393,7 +393,7 @@ string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 				case CSP::Node::Type::INTERFACE:
 					return n->fullname();
 				case CSP::Node::Type::METHOD:
-					return ((CSP::MethodNode*)n)->get_return_type();
+					return ((CSP::MethodNode*)n)->get_type();
 				case CSP::Node::Type::PROPERTY:
 				case CSP::Node::Type::VAR:
 					return ((CSP::VarNode*)n)->get_type();
@@ -411,10 +411,10 @@ string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 					case CSP::Node::Type::INTERFACE:
 						return n->fullname();
 					case CSP::Node::Type::METHOD:
-						return ((CSP::MethodNode*)n)->get_return_type();
+						return ((CSP::MethodNode*)n)->get_type();
 					case CSP::Node::Type::PROPERTY:
 					case CSP::Node::Type::VAR:
-						return ((CSP::VarNode*)n)->get_return_type();
+						return ((CSP::VarNode*)n)->get_type();
 					}
 				}
 
@@ -596,7 +596,7 @@ void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &
 			redundant_prefix.push_back(tk);
 			//if (ctx->is_visible(redundant_prefix)) { TODO: ctx jest niedokonczonym obiektem... jakis blad przy parsowaniu
 			//if (ctx_namespace->is_visible(redundant_prefix)) {
-			if (!get_types_by_name(tk).empty()) {
+			if (!get_types_by_name(tk, VIS_ALL).empty()) {
 				pos += 2;
 			} 
 			
@@ -714,68 +714,60 @@ list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
 	return lst;
 }
 
-static int cnt = 0;
-list<CSP::TypeNode*> CSharpContext::get_visible_types()
+list<CSP::TypeNode*> CSharpContext::get_visible_types(int visibility)
 {
-//	cout << "GET VISIBLE TYPES" << (cnt++) << endl;
-
 	ASSURE_CTX(list<CSP::TypeNode*>());
-//	cout << "after assure ctx" << endl;
 
-	list<CSP::TypeNode*> lst;
+	list<CSP::TypeNode*> res;
 
-	auto visible_types = cinfo.ctx_cursor->get_visible_types();
-	for (auto x : visible_types) {
-//		cout << "w petli" << endl;
-		lst.push_back(x);
-	}
+	auto visible_types = cinfo.ctx_cursor->get_visible_types(visibility);
+	MERGE_LISTS(res, visible_types);
 
 	// TODO: append visible types from assembly_provider
 
-//	cout << "return" << endl;
-	return lst;
+	return res;
 }
 
-list<CSP::MethodNode*> CSharpContext::get_visible_methods()
+list<CSP::MethodNode*> CSharpContext::get_visible_methods(int visibility)
 {
 	ASSURE_CTX(list<CSP::MethodNode*>());
 
-	list<CSP::MethodNode*> lst;
+	list<CSP::MethodNode*> res;
 
 	// methods
-	for (auto x : cinfo.ctx_cursor->get_visible_methods())
-		lst.push_back(x);
+	auto visible_methods = cinfo.ctx_cursor->get_visible_methods(visibility);
+	MERGE_LISTS(res, visible_methods);
 
 	// constructors of visible classess
 	if (this->include_constructors) {
-		for (auto x : cinfo.ctx_cursor->get_visible_types()) {
+		auto visible_types = cinfo.ctx_cursor->get_visible_types(visibility);
+		for (auto x : visible_types) {
 			if (x->node_type == CSP::Node::Type::STRUCT
 				|| x->node_type == CSP::Node::Type::CLASS)
 			{
-				auto constructors = ((CSP::StructNode*)x)->get_constructors();
-				for (auto y : constructors)
-					lst.push_back(y);
+				auto constructors = ((CSP::StructNode*)x)->get_constructors(visibility);
+				MERGE_LISTS(res, constructors);
 			}
 		}
 	}
 
 	// TODO: append visible methods from assembly_provider
 
-	return lst;
+	return res;
 }
 
-list<CSP::VarNode*> CSharpContext::get_visible_vars()
+list<CSP::VarNode*> CSharpContext::get_visible_vars(int visibility)
 {
 	ASSURE_CTX(list<CSP::VarNode*>());
 
-	list<CSP::VarNode*> lst;
+	list<CSP::VarNode*> res;
 
-	for (auto x : cinfo.ctx_cursor->get_visible_vars())
-		lst.push_back(x);
+	auto visible_vars = cinfo.ctx_cursor->get_visible_vars(visibility);
+	MERGE_LISTS(res, visible_vars);
 
 	// TODO: append visible vars from assembly_provider
 	
-	return lst;
+	return res;
 }
 
 list<string> CSharpContext::get_visible_labels() {
@@ -791,7 +783,7 @@ list<string> CSharpContext::get_visible_labels() {
 }
 
 
-list<CSP::TypeNode*> CSharpContext::get_types_by_name(string name)
+list<CSP::TypeNode*> CSharpContext::get_types_by_name(string name, int visibility)
 {
 	ASSURE_CTX(list<CSP::TypeNode*>());
 
@@ -799,30 +791,30 @@ list<CSP::TypeNode*> CSharpContext::get_types_by_name(string name)
 
 	// TODO to mo¿na przyspieszyæ szukaj¹c explicite a nie korzystaj¹c z get_visible_types
 	// TODO dodaæ cache dla kontekstu (byæ mo¿e wiele razy odwo³ujemy siê do nazwy danego typu)
-	auto types = get_visible_types();
-	SCAN_AND_ADD(types);
+	auto visible_types = get_visible_types(visibility);
+	MERGE_LISTS_COND(res, visible_types, NAME_COND);
 
 	return res;
 }
 
-list<CSP::MethodNode*> CSharpContext::get_methods_by_name(string name)
+list<CSP::MethodNode*> CSharpContext::get_methods_by_name(string name, int visibility)
 {
 	ASSURE_CTX(list<CSP::MethodNode*>());
 
 	list<CSP::MethodNode*> res;
-	auto methods = get_visible_methods();
-	SCAN_AND_ADD(methods);
+	auto visible_methods = get_visible_methods(visibility);
+	MERGE_LISTS_COND(res, visible_methods, NAME_COND);
 
 	return res;
 }
 
-list<CSP::VarNode*> CSharpContext::get_vars_by_name(string name)
+list<CSP::VarNode*> CSharpContext::get_vars_by_name(string name, int visibility)
 {
 	ASSURE_CTX(list<CSP::VarNode*>());
 
 	list<CSP::VarNode*> res;
-	auto vars = get_visible_vars();
-	SCAN_AND_ADD(vars);
+	auto visible_vars = get_visible_vars(visibility);
+	MERGE_LISTS_COND(res, visible_vars, NAME_COND);
 
 	return res;
 }
@@ -836,30 +828,29 @@ CSP::Node* CSharpContext::get_by_fullname(string fullname)
 			return x;
 	}
 
-	for (auto x : get_visible_types()) {
+	for (auto x : get_visible_types(VIS_ALL)) {
 		if (fullname == x->fullname())
 			return x;
 	}
 
-	for (auto x : get_visible_vars()) {
+	for (auto x : get_visible_vars(VIS_ALL)) {
 		if (fullname == x->fullname())
 			return x;
 	}
 
-	for (auto x : get_visible_methods()) {
+	for (auto x : get_visible_methods(VIS_ALL)) {
 		if (fullname == x->fullname())
 			return x;
 	}
-
 
 
 	return nullptr;
 
 }
 
-
 // symulacja DFS przy przechodzeniu po drzewie wêz³ów - szukamy wszystkiego co pasuje
-list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos) {
+// daje node'y takie, z jakim visibility przysz³o, ustawia nowe visibility dla dalszych wywolan rekurencyjnych
+list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos, int visibility) {
 
 	// 1. . X   - konkretne dziecko
 	// 2. . EOF - wszystkie dzieci
@@ -882,9 +873,15 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 		&& tokens[pos + 1].type == CST::TK_IDENTIFIER)
 	{
 		string child_name = tokens[pos + 1].data;
-		auto children = invoker->get_child(child_name);
+		auto children = invoker->get_members(child_name,visibility);
 		for (auto x : children) {
-			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
+
+			if (!(IS_TYPE_NODE(x))) // no longer static
+				visibility &= ~VIS_STATIC;
+			else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
+				visibility = csc->get_visibility_by_var((CSP::VarNode*)x);
+
+			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2,visibility);
 			MERGE_LISTS(res, res_results);
 		}
 	}
@@ -894,7 +891,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 		&& tokens[pos+1].type == CST::TK_EOF)
 	{
 		// "" means any child -> see SCAN_AND_ADD macro
-		auto children = invoker->get_child("");
+		auto children = invoker->get_members("",visibility);
 		MERGE_LISTS(res, children);
 	}
 
@@ -954,6 +951,8 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	//   3. class-name or namespace-name
 	//   4. variable
 
+	int visibility = VIS_ALL; // get all nodes!
+
 	list<CSP::Node*> res;
 	switch (tokens[0].type) {
 
@@ -961,7 +960,8 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	case CST::TK_KW_THIS: {
 		CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
 		if (thisClass != nullptr) {
-			auto nodes = get_nodes_by_simplified_expression_rec(thisClass, tokens, 1);
+			visibility &= ~VIS_STATIC;
+			auto nodes = get_nodes_by_simplified_expression_rec(thisClass, tokens, 1, visibility);
 			MERGE_LISTS(res, nodes);
 		}
 		break;
@@ -974,6 +974,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	case CST::TK_LT_STRING:
 	case CST::TK_LT_INTERPOLATED:
 	{
+		// TODO: map to System.Int32, System.String etc
 		// do nothing
 		break;
 	}
@@ -992,7 +993,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 
 		// FIND FURTHER
 		for (auto x : start) {
-			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
+			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1, visibility);
 			MERGE_LISTS(res, nodes);
 		}
 	}
@@ -1018,21 +1019,17 @@ list<CSP::Node*> CSharpContext::get_visible_in_ctx_by_name(string name)
 {
 	list<CSP::Node*> res;
 
-	for (auto x : get_visible_namespaces())
-		if (name == x->name)
-			res.push_back(x);
+	auto visible_namespaces = get_visible_namespaces();
+	MERGE_LISTS_COND(res, visible_namespaces, CHILD_COND);
 
-	for (auto x : get_visible_types())
-		if (name == x->name)
-			res.push_back(x);
+	auto visible_types = get_visible_types(VIS_ALL);
+	MERGE_LISTS_COND(res, visible_types, CHILD_COND);
 
-	for (auto x : get_visible_methods())
-		if (name == x->name)
-			res.push_back(x);
+	auto visible_methods = get_visible_methods(VIS_ALL);
+	MERGE_LISTS_COND(res, visible_methods, CHILD_COND);
 
-	for (auto x : get_visible_vars())
-		if (name == x->name)
-			res.push_back(x);
+	auto visible_vars = get_visible_vars(VIS_ALL);
+	MERGE_LISTS_COND(res, visible_vars, CHILD_COND);
 
 	return res;
 }
@@ -1079,6 +1076,32 @@ bool CSharpContext::function_match(CSP::MethodNode* method, string function_call
 
 }
 
+bool CSharpContext::on_class_chain(const CSP::TypeNode* derive, const CSP::TypeNode* base)
+{
+	if (derive == base)
+		return true;
+
+	bool res = false;
+	for (string type_name : derive->base_types) {
+
+		auto nodes = get_nodes_by_expression(type_name);
+		for (auto n : nodes) {
+
+			if (n->node_type == CSP::Node::Type::CLASS
+				|| n->node_type == CSP::Node::Type::STRUCT
+				|| n->node_type == CSP::Node::Type::INTERFACE)
+			{
+				if (on_class_chain((CSP::TypeNode*)n, base))
+					res = true;
+			}
+
+		}
+
+	}
+
+	return res;
+}
+
 
 
 CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_type)
@@ -1104,4 +1127,45 @@ CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_ty
 		return Option::KIND_PLAIN_TEXT; // todo unknown?
 	}
 
+}
+
+CSP::TypeNode * CSharpContext::get_type_by_expression(string expr)
+{
+	// auto nodes = get_nodes_by_expression(expr); TODO: to powoduje nieskonczona rekursje!
+	auto nodes = find_by_shortcuts(expr); // TODO powinno byc by expression
+	for (auto x : nodes)
+		if (IS_TYPE_NODE(x))
+			return (CSP::TypeNode*)x;
+
+	return nullptr;
+}
+
+// jeœli wywo³ujemy coœ na OBIEKCIE a nie na klasie
+int CSharpContext::get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object) {
+
+	int visibility = VIS_NONE;
+
+	if (csc->cinfo.ctx_class == type_of_invoker_object)
+		visibility = VIS_PPP;
+	else if (csc->on_class_chain(csc->cinfo.ctx_class, type_of_invoker_object))
+		visibility = VIS_PP;
+	else
+		visibility = VIS_PUBLIC;
+
+	return visibility;
+}
+
+int CSharpContext::get_visibility_by_var(const CSP::VarNode* var_invoker_object)
+{
+	string return_type = var_invoker_object->get_type();
+	auto nodes = csc->get_nodes_by_expression(return_type);
+
+	if (nodes.size() == 0)
+		return VIS_NONE;
+
+	CSP::TypeNode* type_of_var = (CSP::TypeNode*)nodes.front();
+
+	int visibility = csc->get_visibility_by_invoker_type(type_of_var);
+
+	return visibility;
 }

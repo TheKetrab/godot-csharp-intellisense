@@ -117,40 +117,7 @@ std::map<CST, CSM> CSharpParser::to_modifier = {
 };
 
 
-template <typename T, typename U>
-void append(list<T*>& lst, const vector<U*> &vec)
-{
-	for (const auto x : vec)
-		lst.push_back(x);
-}
 
-template <typename T, typename U>
-void append(list<T*>& lst, const list<U*> &l)
-{
-	for (const auto x : l)
-		lst.push_back(x);
-}
-
-string join_vector(const vector<string> &v, const string &joiner)
-{
-	int n = v.size();
-	if (n == 0) return "";
-
-	string res = v[0];
-	for (int i = 1; i < n; i++)
-		res += joiner + v[i];
-
-	return res;
-}
-
-list<CSharpParser::TypeNode*> to_safe_list2(const vector<CSharpParser::TypeNode*>& vec)
-{
-	list<CSharpParser::TypeNode*> lst;
-	for (CSharpParser::TypeNode* n : vec)
-		lst.push_back(n);
-
-	return lst;
-}
 
 void CSharpParser::debug_info() const {
 	if (pos == 1549) {
@@ -219,7 +186,9 @@ void CSharpParser::clear_state() {
 void CSharpParser::_parse_modifiers() {
 
 	this->modifiers = 0;
-	while (true) {
+
+	bool end = false;
+	while (!end) {
 
 		switch (GETTOKEN(0)) {
 
@@ -229,9 +198,14 @@ void CSharpParser::_parse_modifiers() {
 			break;
 		}
 		default: {
-			return; // end of modifiers, sth other
+			end = true; // end of modifiers, sth other
 		}
 		}
+	}
+
+	// if no modifiers pub/pro/pri -> it is private!
+	if ((modifiers & (int)Modifier::MOD_PPP) == 0) {
+		modifiers |= (int)Modifier::MOD_PRIVATE;
 	}
 }
 
@@ -2387,6 +2361,8 @@ CSharpParser::MethodNode* CSharpParser::_parse_method_declaration(string name, s
 	this->current = node;
 	this->cur_method = node;
 
+	_apply_attributes(node);
+	_apply_modifiers(node);
 
 	node->name = name;
 	node->return_type = return_type;
@@ -2671,6 +2647,22 @@ bool CSharpParser::coercion_possible(string from, string to)
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
 
+bool CSharpParser::Node::is_public() {
+	return modifiers & (int)Modifier::MOD_PUBLIC;
+}
+
+bool CSharpParser::Node::is_protected() {
+	return modifiers & (int)Modifier::MOD_PROTECTED;
+}
+
+bool CSharpParser::Node::is_private() {
+	return modifiers & (int)Modifier::MOD_PRIVATE;
+}
+
+bool CSharpParser::Node::is_static() {
+	return modifiers & (int)Modifier::MOD_STATIC;
+}
+
 void CSharpParser::Node::print_header(int indent, const vector<string> &v, string title) const {
 
 	indentation(indent);
@@ -2685,8 +2677,9 @@ CSharpParser::Node::Node(Type t, TD td) {
 	this->node_type = t;
 }
 
-CSharpParser::Node::~Node()
-{
+CSharpParser::Node::~Node() {
+
+	// TODO: shared ptr and weak ptr
 	if (active_parser->cinfo.ctx_cursor == this)
 		active_parser->cinfo.ctx_cursor = nullptr;
 	if (active_parser->cinfo.ctx_block == this)
@@ -2698,17 +2691,14 @@ CSharpParser::Node::~Node()
 
 }
 
-
 CSharpParser::BlockNode::~BlockNode()
 {
-	SCAN_AND_DELETE(statements);
+	FOREACH_DELETE(statements);
 }
 
-list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
+list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars(int visibility) const
 {
 	list<VarNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_vars();
 
 	// all statements in current block are BEFORE cursor
 	for (StatementNode* node : statements) {
@@ -2719,9 +2709,14 @@ list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars() const
 
 	}
 
+	// all visible in parent
+	if (parent != nullptr) {
+		auto visible_vars = parent->get_visible_vars(visibility);
+		MERGE_LISTS(res, visible_vars);
+	}
+
 	return res;
 }
-
 
 // czy w tym wêŸle widaæ ca³y prefix?
 bool CSharpParser::Node::is_visible(const vector<string>& redundant_prefix)
@@ -2750,73 +2745,63 @@ bool CSharpParser::Node::is_visible(const vector<string>& redundant_prefix)
 	return true;
 }
 
-list<CSP::Node*> CSharpParser::Node::get_members() const
+list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types(int visibility) const
 {
-	return list<Node*>();
-}
-
-
-list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types() const
-{
-//	cout << "--- get_visible_types NAMESPACE" << endl;
 	list<TypeNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_types();
+	if (parent != nullptr) // private no longer visible in parent
+		res = parent->get_visible_types(visibility & ~VIS_PRIVATE);
 
-	append(res, structures);
-	append(res, classes);
-	append(res, interfaces);
-	append(res, delegates);
+	MERGE_LISTS_COND(res, structures, VISIBILITY_COND);
+	MERGE_LISTS_COND(res, classes, VISIBILITY_COND);
+	MERGE_LISTS_COND(res, interfaces, VISIBILITY_COND);
 
 	return res;
 }
 
-
-
-list<CSharpParser::Node*> CSharpParser::NamespaceNode::get_child(const string name, Type t) const
+list<CSharpParser::Node*> CSharpParser::NamespaceNode::get_members(const string name, int visibility) const
 {
 	list<CSharpParser::Node*> res;
 
-	SCAN_AND_ADD(namespaces);
-	SCAN_AND_ADD(classes);
-	SCAN_AND_ADD(structures);
-	SCAN_AND_ADD(interfaces);
-	SCAN_AND_ADD(enums);
-	SCAN_AND_ADD(delegates);
+	MERGE_LISTS_COND(res, namespaces, (CHILD_COND && VISIBILITY_COND));
+	MERGE_LISTS_COND(res, classes,    (CHILD_COND && VISIBILITY_COND));
+	MERGE_LISTS_COND(res, structures, (CHILD_COND && VISIBILITY_COND));
+	MERGE_LISTS_COND(res, interfaces, (CHILD_COND && VISIBILITY_COND));
+	MERGE_LISTS_COND(res, enums,      (CHILD_COND && VISIBILITY_COND));
+	MERGE_LISTS_COND(res, delegates,  (CHILD_COND && VISIBILITY_COND));
 
 	return res;
 }
 
 // default
-list<CSharpParser::MethodNode*> CSharpParser::Node::get_visible_methods() const
+list<CSharpParser::MethodNode*> CSharpParser::Node::get_visible_methods(int visibility) const
 {
 	if (parent != nullptr)
-		return parent->get_visible_methods();
+		return parent->get_visible_methods(visibility);
 
 	return list<MethodNode*>();
 }
 
 // deafult
-list<CSharpParser::VarNode*> CSharpParser::Node::get_visible_vars() const
+list<CSharpParser::VarNode*> CSharpParser::Node::get_visible_vars(int visibility) const
 {
 	if (parent != nullptr)
-		return parent->get_visible_vars();
+		return parent->get_visible_vars(visibility);
 
 	return list<VarNode*>();
 }
 
-list<CSharpParser::Node*> CSharpParser::Node::get_child(const string name, Type t) const
+// default
+list<CSharpParser::Node*> CSharpParser::Node::get_members(const string name, int visibility) const
 {
 	return list<CSharpParser::Node*>();
 }
 
-
-string CSharpParser::MethodNode::get_return_type() const
+string CSharpParser::MethodNode::get_type() const
 {
 	if (CSP::is_base_type(return_type))
 		return return_type;
 	else {
-		list<CSP::TypeNode*> tn = csc->get_types_by_name(return_type);
+		list<CSP::TypeNode*> tn = csc->get_types_by_name(return_type,VIS_ALL);
 		if (tn.empty()) {
 			return return_type; // TODO error? not found
 		}
@@ -2824,32 +2809,13 @@ string CSharpParser::MethodNode::get_return_type() const
 			return tn.front()->fullname();
 		}
 	}
-
-	return string();
 }
 
-string CSharpParser::VarNode::get_return_type() const
-{
-	if (CSP::is_base_type(type))
-		return type;
-	else {
-		list<CSP::TypeNode*> tn = csc->get_types_by_name(type);
-		if (tn.empty()) {
-			return type; // TODO error? not found
-		}
-		else {
-			return tn.front()->fullname();
-		}
-	}
-
-	return string();
-}
-
-list<CSP::Node*> CSharpParser::VarNode::get_child(const string name, Type t) const
+list<CSP::Node*> CSharpParser::VarNode::get_members(const string name, int visibility) const
 {
 	string return_type = get_type();
 	if (return_type.empty() || is_base_type(return_type))
-		return list<CSP::Node*>();
+		return list<CSP::Node*>(); // TODO: is_base_type -> get members for base types
 
 	// else -> cast to TypeNode and get members
 	auto nodes = csc->get_nodes_by_expression(return_type);
@@ -2857,40 +2823,43 @@ list<CSP::Node*> CSharpParser::VarNode::get_child(const string name, Type t) con
 	if (nodes.size() == 0)
 		return list<CSP::Node*>();
 
-	return nodes.front()->get_child(name, t);
+	CSP::TypeNode* type_of_var = (CSP::TypeNode*)nodes.front();
+
+	visibility = csc->get_visibility_by_invoker_type(type_of_var);
+
+	return type_of_var->get_members(name, visibility);
 
 }
 
-string CSharpParser::VarNode::prettyname() const
+string CSharpParser::VarNode::prettyname() const 
 {
-	string res = name;
-	res += " : ";
-	res += type;
-
-	return res;
+	return name + " : " + type;
 }
 
-list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars() const
+list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars(int visibility) const
 {
 	list<VarNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_vars();
 
-	// arguments are visible aswell
-	for (auto x : arguments)
-		res.push_back(x);
+	// arguments are visible
+	MERGE_LISTS(res, arguments);
+
+	// vars from class
+	if (parent != nullptr) {
+		auto visible_vars = parent->get_visible_vars(visibility);
+		MERGE_LISTS(res, visible_vars);
+	}
 
 	return res;
 }
 
 CSharpParser::InterfaceNode::~InterfaceNode()
 {
-	SCAN_AND_DELETE(methods);
-	SCAN_AND_DELETE(properties);
+	FOREACH_DELETE(methods);
+	FOREACH_DELETE(properties);
 }
 
-void CSharpParser::InterfaceNode::print(int indent) const {
-
+void CSharpParser::InterfaceNode::print(int indent) const
+{
 	indentation(indent);
 	cout << "INTERFACE " << name << endl;
 
@@ -2901,17 +2870,19 @@ void CSharpParser::InterfaceNode::print(int indent) const {
 
 }
 
-list<CSharpParser::Node*> CSharpParser::InterfaceNode::get_child(const string name, Type t) const
+list<CSharpParser::Node*> CSharpParser::InterfaceNode::get_members(const string name, int visibility) const
 {
 	list<Node*> res;
-	SCAN_AND_ADD(methods);
-	SCAN_AND_ADD(properties);
+
+	// everything is 'public'
+	MERGE_LISTS(res, methods);
+	MERGE_LISTS(res, properties);
 
 	return res;
 }
 
-void CSharpParser::EnumNode::print(int indent) const {
-
+void CSharpParser::EnumNode::print(int indent) const
+{
 	indentation(indent);     cout << "ENUM " << name << ":" << endl;
 	indentation(indent + 2); cout << "type: " << type << endl;
 
@@ -2957,8 +2928,6 @@ string CSharpParser::Node::prettyname() const
 }
 
 
-
-
 // default
 list<CSharpParser::NamespaceNode*> CSharpParser::Node::get_visible_namespaces() const
 {
@@ -2969,12 +2938,10 @@ list<CSharpParser::NamespaceNode*> CSharpParser::Node::get_visible_namespaces() 
 }
 
 // default
-list<CSharpParser::TypeNode*> CSharpParser::Node::get_visible_types() const
+list<CSharpParser::TypeNode*> CSharpParser::Node::get_visible_types(int visibility) const
 {
-//	cout << "--- get_visible_types DEFAULT" << endl;
-
 	if (parent != nullptr)
-		return parent->get_visible_types();
+		return parent->get_visible_types(visibility);
 
 	return list<TypeNode*>();
 }
@@ -2985,7 +2952,7 @@ list<CSharpParser::NamespaceNode*> CSharpParser::NamespaceNode::get_visible_name
 	if (parent != nullptr)
 		res = parent->get_visible_namespaces();
 
-	append(res, namespaces);
+	MERGE_LISTS(res, namespaces);
 
 	return res;
 }
@@ -3013,14 +2980,14 @@ void CSharpParser::ClassNode::print(int indent) const {
 
 CSharpParser::StructNode::~StructNode()
 {
-	SCAN_AND_DELETE(variables);
-	SCAN_AND_DELETE(methods);
-	SCAN_AND_DELETE(classes);
-	SCAN_AND_DELETE(interfaces);
-	SCAN_AND_DELETE(structures);
-	SCAN_AND_DELETE(enums);
-	SCAN_AND_DELETE(properties);
-	SCAN_AND_DELETE(delegates);
+	FOREACH_DELETE(variables);
+	FOREACH_DELETE(methods);
+	FOREACH_DELETE(classes);
+	FOREACH_DELETE(interfaces);
+	FOREACH_DELETE(structures);
+	FOREACH_DELETE(enums);
+	FOREACH_DELETE(properties);
+	FOREACH_DELETE(delegates);
 }
 
 void CSharpParser::StructNode::print(int indent) const {
@@ -3044,87 +3011,110 @@ void CSharpParser::StructNode::print(int indent) const {
 	if (structures.size() > 0)	for (StructNode* x : structures)	x->print(indent + TAB);
 }
 
-list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types() const
+list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types(int visibility) const
 {
-//	cout << "--- get_visible_types STRUCT" << endl;
-
 	list<TypeNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_types();
 
-	append(res, structures);
-	append(res, classes);
-	append(res, interfaces);
-	append(res, delegates);
+	// types from current node
+	MERGE_LISTS_COND(res, structures, VISIBILITY_COND);
+	MERGE_LISTS_COND(res, classes, VISIBILITY_COND);
+	MERGE_LISTS_COND(res, interfaces, VISIBILITY_COND);
+
+	// derived types
+	for (auto x : base_types) {
+		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
+		if (type_node != nullptr) { // from base class -> no longer private
+			auto visible_from_base = type_node->get_visible_types(visibility & ~VIS_PRIVATE);
+			MERGE_LISTS(res, visible_from_base);
+		}
+	}
+
+	// nested types (eg. class defined inside class)
+	if (parent != nullptr && IS_TYPE_NODE(parent)) {
+		auto outside_types = parent->get_visible_types(visibility);
+		MERGE_LISTS(res, outside_types);
+	}
 
 	return res;
 }
 
-list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods() const
+list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods(int visibility) const
 {
 	list<MethodNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_methods();
 
-	append(res, methods);
+	// methods from current node
+	MERGE_LISTS_COND(res, methods, VISIBILITY_COND);
+
+	// derived methods
+	for (auto x : base_types) {
+		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
+		if (type_node != nullptr) { // from base class -> no longer private
+			auto visible_from_base = type_node->get_visible_methods(visibility & ~VIS_PRIVATE);
+			MERGE_LISTS(res, visible_from_base);
+		}
+	}
 
 	return res;
 }
 
-list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars() const
+list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars(int visibility) const
 {
 	list<VarNode*> res;
-	if (parent != nullptr)
-		res = parent->get_visible_vars();
 
-	append(res, variables);
-	append(res, properties);
+	// vars from current node
+	MERGE_LISTS_COND(res, variables, VISIBILITY_COND);
+	MERGE_LISTS_COND(res, properties, VISIBILITY_COND);
+
+	// derived types
+	for (auto x : base_types) {
+		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
+		if (type_node != nullptr) { // from base class -> no longer private
+			auto visible_from_base = type_node->get_visible_vars(visibility & ~VIS_PRIVATE);
+			MERGE_LISTS(res, visible_from_base);
+		}
+	}
 
 	return res;
 }
 
-list<CSharpParser::Node*> CSharpParser::StructNode::get_child(const string name, Type t) const
+list<CSharpParser::Node*> CSharpParser::StructNode::get_members(const string name, int visibility) const
 {
 	list<Node*> res;
-	SCAN_AND_ADD(variables);
-	SCAN_AND_ADD(methods);
-	SCAN_AND_ADD(classes);
-	SCAN_AND_ADD(interfaces);
-	SCAN_AND_ADD(structures);
-	SCAN_AND_ADD(enums);
-	SCAN_AND_ADD(properties);
-	SCAN_AND_ADD(delegates);
-	SCAN_AND_ADD(variables);
+	
+	auto visible_vars = get_visible_vars(visibility);
+	auto visible_methods = get_visible_methods(visibility);
+	auto visible_types = get_visible_types(visibility);
+
+	MERGE_LISTS_COND(res, visible_vars, CHILD_COND);
+	MERGE_LISTS_COND(res, visible_methods, CHILD_COND);
+	MERGE_LISTS_COND(res, visible_types, CHILD_COND);
 
 	return res;
 }
 
-list<CSP::MethodNode*> CSharpParser::StructNode::get_constructors() const
+list<CSP::MethodNode*> CSharpParser::StructNode::get_constructors(int visibility) const
 {
 	list<CSP::MethodNode*> res;
 	for (auto x : methods)
-		if (x->return_type == this->name)
+		if (x->return_type == this->name && VISIBILITY_COND)
 			res.push_back(x);
 
 	return res;
 }
 
-void CSharpParser::StatementNode::print(int indent) const {
-
+void CSharpParser::StatementNode::print(int indent) const
+{
 	indentation(indent);
 	cout << "STATEMENT" << endl;
-
 }
 
-void CSharpParser::VarNode::print(int indent) const {
-
+void CSharpParser::VarNode::print(int indent) const
+{
 	indentation(indent);
 	cout << "VAR: ";
 	if (modifiers & (int)CSM::MOD_CONST) cout << "const ";
 	cout << type << " " << name << endl;
-
 }
-
 
 string CSharpParser::VarNode::get_type() const
 {
@@ -3138,37 +3128,31 @@ string CSharpParser::VarNode::get_type() const
 		if (ctx == nullptr)
 			return wldc;
 
-		// TODO ! s³abo dzia³a
 		string t = csc->simplify_expression(value);
 		return t;
 	}
+	
+	// base type
+	if (CSP::is_base_type(type))
+		return type;
 
-	string res;
-	if (modifiers & (int)Modifier::MOD_CONST)
-		res = "const ";
-
-	string real_type;
-	// TODO if nie jest base type
-	list<TypeNode*> nodes = csc->get_types_by_name(type);
-	if ( ! nodes.empty() )
-		real_type = nodes.front()->fullname();
-
-	if (real_type.empty())
-		res += type;
+	// type node
+	list<CSP::TypeNode*> type_nodes = csc->get_types_by_name(type, VIS_ALL);
+	if (type_nodes.empty()) {
+		return type; // TODO error? not found
+	}
 	else
-		res += real_type;
+		return type_nodes.front()->fullname();
 
-	return res;
 }
-
 
 CSharpParser::MethodNode::~MethodNode()
 {
-	SCAN_AND_DELETE(arguments);
+	FOREACH_DELETE(arguments);
 }
 
-void CSharpParser::MethodNode::print(int indent) const {
-
+void CSharpParser::MethodNode::print(int indent) const
+{
 	indentation(indent);
 	cout << "METHOD " << return_type << " " << name << endl;
 	cout << "(";
@@ -3228,16 +3212,16 @@ string CSharpParser::MethodNode::prettyname() const
 
 CSharpParser::NamespaceNode::~NamespaceNode()
 {
-	SCAN_AND_DELETE(namespaces);
-	SCAN_AND_DELETE(classes);
-	SCAN_AND_DELETE(structures);
-	SCAN_AND_DELETE(interfaces);
-	SCAN_AND_DELETE(enums);
-	SCAN_AND_DELETE(delegates);
+	FOREACH_DELETE(namespaces);
+	FOREACH_DELETE(classes);
+	FOREACH_DELETE(structures);
+	FOREACH_DELETE(interfaces);
+	FOREACH_DELETE(enums);
+	FOREACH_DELETE(delegates);
 }
 
-void CSharpParser::NamespaceNode::print(int indent) const {
-
+void CSharpParser::NamespaceNode::print(int indent) const
+{
 	indentation(indent);
 	cout << "NAMESPACE " << name << ":" << endl;
 
@@ -3275,8 +3259,8 @@ CSharpParser::FileNode::~FileNode()
 {
 }
 
-void CSharpParser::FileNode::print(int indent) const {
-
+void CSharpParser::FileNode::print(int indent) const
+{
 	indentation(indent);
 	cout << "FILE " << name << ":" << endl;
 

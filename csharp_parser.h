@@ -45,10 +45,11 @@ class CSharpParser {
 		struct NamespaceNode;
 			struct FileNode;
 		struct EnumNode;
-		struct TypeNode; // abstract
-			struct InterfaceNode;
-			struct StructNode;
-				struct ClassNode;
+		struct GenericNode; // abstract
+			struct TypeNode; // abstract
+				struct InterfaceNode;
+				struct StructNode;
+					struct ClassNode;
 			struct MethodNode;
 			struct DelegateNode;
 		struct VarNode;
@@ -62,6 +63,8 @@ class CSharpParser {
 			struct TryNode; //  (try-catch-finally)
 			struct UsingNode;
 	// ----- ----- ----- ----- ----- //
+
+
 
 	// co my chcemy uzyskac
 	enum class CompletionType {
@@ -104,11 +107,10 @@ class CSharpParser {
 		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY(int,Namespace1.ClassY)
 		virtual string prettyname() const; // do wypisywania w intellisense
 		virtual list<NamespaceNode*> get_visible_namespaces() const; // readonly visible namespaces
-		virtual list<TypeNode*> get_visible_types() const;           // readonly visible structures, classess, interfaces, delegates
-		virtual list<MethodNode*> get_visible_methods() const;       // readonly visible methods
-		virtual list<VarNode*> get_visible_vars() const;             // readonly visible vars and properties
-		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const; // bezpoœrednie dzieci
-		virtual list<Node*> get_members() const; // metody, pola, podklasy swoje i klas bazowych
+		virtual list<TypeNode*> get_visible_types(int visibility) const;           // readonly visible structures, classess, interfaces, delegates
+		virtual list<MethodNode*> get_visible_methods(int visibility) const;       // readonly visible methods
+		virtual list<VarNode*> get_visible_vars(int visibility) const;             // readonly visible vars and properties
+		virtual list<Node*> get_members(const string name, int visibility) const; // dzieci przez nazwe
 
 		void print_header(int indent, const vector<string> &v, string title) const;
 
@@ -118,6 +120,11 @@ class CSharpParser {
 			for (T* t : v) cout << " " << t->name;
 			cout << endl;
 		}
+
+		virtual bool is_public();
+		virtual bool is_protected();
+		virtual bool is_private();
+		virtual bool is_static();
 
 	};
 
@@ -138,9 +145,8 @@ class CSharpParser {
 		void print(int indent = 0) const override;
 
 		virtual list<NamespaceNode*> get_visible_namespaces() const override;
-		virtual list<TypeNode*> get_visible_types() const override;
-		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
-		//virtual list<Node*> get_members() const override;
+		virtual list<TypeNode*> get_visible_types(int visibility) const override;
+		virtual list<Node*> get_members(const string name, int visibility) const override;
 	};
 
 	// filenode jest jak namespace global, tylko ze ma dodatkowe funkcjonalnosci (to co widac TYLKO w tym pliku)
@@ -173,19 +179,26 @@ class CSharpParser {
 		void print(int indent = 0) const override;
 	};
 
-	// abstract (type can be generic)
-	struct TypeNode : public Node {
+	// abstract
+	struct GenericNode : public Node {
 
 		bool is_generic = false;
 		vector<string> generic_declarations;
 		string constraints; // generyczne: where ... 
-		TypeNode(Type t, TD td) : Node(t,td) {}
+		GenericNode(Type t, TD td) : Node(t,td) {}
+
+	};
+
+	// abstract
+	struct TypeNode : public GenericNode {
+
+		vector<string> base_types; // base class and interfaces
+		TypeNode(Type t, TD td) : GenericNode(t, td) {}
 
 	};
 
 	struct InterfaceNode : public TypeNode {
 
-		vector<string> base_types; // base interfaces
 		vector<MethodNode*> methods;
 		vector<PropertyNode*> properties;
 
@@ -193,12 +206,11 @@ class CSharpParser {
 		virtual ~InterfaceNode();
 		void print(int indent = 0) const override;
 		
-		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
+		virtual list<Node*> get_members(const string name, int visibility) const override;
 	};
 
 	struct StructNode : public TypeNode {
 
-		vector<string> base_types; // base class and interfaces
 		vector<VarNode*> variables;
 		vector<MethodNode*> methods;
 		vector<ClassNode*> classes;
@@ -212,11 +224,11 @@ class CSharpParser {
 		virtual ~StructNode();
 		void print(int indent = 0) const override;
 
-		virtual list<TypeNode*> get_visible_types() const override;
-		virtual list<MethodNode*> get_visible_methods() const override;
-		virtual list<VarNode*> get_visible_vars() const override;
-		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
-		list<MethodNode*> get_constructors() const;
+		virtual list<TypeNode*> get_visible_types(int visibility) const override;
+		virtual list<MethodNode*> get_visible_methods(int visibility) const override;
+		virtual list<VarNode*> get_visible_vars(int visibility) const override;
+		virtual list<Node*> get_members(const string name, int visibility) const override;
+		list<MethodNode*> get_constructors(int visibility) const;
 
 	};
 
@@ -226,26 +238,26 @@ class CSharpParser {
 		void print(int indent = 0) const override;
 	};
 
-	struct MethodNode : public TypeNode { // TODO !!! to nie jest type node tylko Generic Node ...
+	struct MethodNode : public GenericNode {
 
 		string return_type;
 		vector<VarNode*> arguments;
 		StatementNode* body = nullptr;
 
-		MethodNode(TD td) : TypeNode(Type::METHOD,td) {}
+		MethodNode(TD td) : GenericNode(Type::METHOD,td) {}
 		virtual ~MethodNode();
 
 		void print(int indent = 0) const override;
 		virtual string fullname() const;
 		virtual string prettyname() const override;
-		virtual string get_return_type() const; // with context
+		virtual string get_type() const; // return type with context (resolve)
 
 		// NOTE: this method will be visible because will be visible in current class (parrent)
-		virtual list<VarNode*> get_visible_vars() const override;
+		virtual list<VarNode*> get_visible_vars(int visibility) const override;
 
 	};
 
-	struct DelegateNode : public TypeNode {
+	struct DelegateNode : public GenericNode {
 		// todo
 	};
 
@@ -255,13 +267,10 @@ class CSharpParser {
 		string value; // or bound expression
 
 		void print(int indent = 0) const override;
-		virtual string get_return_type() const; // with context
-		virtual list<Node*> get_child(const string name, Type t = Type::UNKNOWN) const override;
+		virtual string get_type() const; // type with context (resolve var)
+		virtual list<Node*> get_members(const string name, int visibility) const override;
 
 		virtual string prettyname() const override;
-
-
-		string get_type() const;
 
 		VarNode(TD td) : Node(Type::VAR,td) { }
 		VarNode(string name, string type, TD td)
@@ -309,7 +318,7 @@ class CSharpParser {
 		vector<StatementNode*> statements;
 
 		virtual ~BlockNode();
-		virtual list<VarNode*> get_visible_vars() const override;
+		virtual list<VarNode*> get_visible_vars(int visibility) const override;
 	};
 
 	struct ConditionNode : public StatementNode {
@@ -378,7 +387,9 @@ public:
 		MOD_REF = 1 << 16,       //
 		MOD_IN = 1 << 17,        // for variables
 		MOD_OUT = 1 << 18,       //
-		MOD_PARAMS = 1 << 19     //
+		MOD_PARAMS = 1 << 19,    //
+
+		MOD_PPP = MOD_PUBLIC | MOD_PROTECTED | MOD_PRIVATE
 	};
 
 	// ***************************** ***************************** //

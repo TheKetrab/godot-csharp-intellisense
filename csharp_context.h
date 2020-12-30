@@ -48,13 +48,13 @@ public:
 
 	// get in context
 	list<CSP::NamespaceNode*> get_visible_namespaces();
-	list<CSP::TypeNode*> get_visible_types();
-	list<CSP::MethodNode*> get_visible_methods();
-	list<CSP::VarNode*> get_visible_vars();
+	list<CSP::TypeNode*> get_visible_types(int visibility);
+	list<CSP::MethodNode*> get_visible_methods(int visibility);
+	list<CSP::VarNode*> get_visible_vars(int visibility);
 	list<string> get_visible_labels();
-	list<CSP::TypeNode*> get_types_by_name(string name);
-	list<CSP::MethodNode*> get_methods_by_name(string name);
-	list<CSP::VarNode*> get_vars_by_name(string name);
+	list<CSP::TypeNode*> get_types_by_name(string name, int visibility);
+	list<CSP::MethodNode*> get_methods_by_name(string name, int visibility);
+	list<CSP::VarNode*> get_vars_by_name(string name, int visibility);
 	CSP::Node* get_by_fullname(string fullname);
 
 	list<CSP::Node*> find_by_shortcuts(string shortname);
@@ -87,11 +87,16 @@ public:
 	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
 	list<CSP::Node*> get_nodes_by_simplified_expression(const vector<CSharpLexer::TokenData> &tokens); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
-	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
+	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos, int visibility);
 	list<CSP::Node*> get_nodes_by_expression(string expr);
 	list<CSP::Node*> get_visible_in_ctx_by_name(string name);
 
 	bool function_match(CSP::MethodNode* method, string function_call) const;
+	bool on_class_chain(const CSP::TypeNode* derive, const CSP::TypeNode* base); // czy jest na lancuchu dziedziczenia
+
+	CSP::TypeNode* get_type_by_expression(string expr);
+	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object);
+	int get_visibility_by_var(const CSP::VarNode* var_invoker_object);
 };
 
 #endif // CSHARP_CONTEXT_H
