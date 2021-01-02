@@ -91,17 +91,17 @@ void CSharpContext::print_visible() {
 		cout << "  " << x->fullname() << endl;
 
 	cout << "TYPES:" << endl;
-	for (auto x : get_visible_types(VIS_ALL))
+	for (auto x : get_visible_types())
 		cout << "  " << x->fullname() << endl;
 
 	cout << "METHODS:" << endl;
-	for (auto x : get_visible_methods(VIS_ALL)) {
+	for (auto x : get_visible_methods()) {
 		cout << "  " << x->fullname() << " : ";
 
 		if (CSP::is_base_type(x->return_type))
 			cout << x->return_type << endl;
 		else {
-			list<CSP::TypeNode*> tn = get_types_by_name(x->return_type, VIS_ALL);
+			list<CSP::TypeNode*> tn = get_types_by_name(x->return_type);
 			if (tn.empty()) {
 				cout << x->return_type << " [not found]" << endl;
 			} else {
@@ -112,7 +112,7 @@ void CSharpContext::print_visible() {
 	}
 
 	cout << "VARIABLES:" << endl;
-	for (auto x : get_visible_vars(VIS_ALL)) {
+	for (auto x : get_visible_vars()) {
 
 		cout << "  " << x->fullname() << " : ";
 
@@ -127,7 +127,7 @@ void CSharpContext::print_visible() {
 		}
 		else {
 			
-			list<CSP::TypeNode*> tn = get_types_by_name(type, VIS_ALL);
+			list<CSP::TypeNode*> tn = get_types_by_name(type);
 			if (tn.empty()) {
 				cout << x->type << " [not found]" << endl;
 			}
@@ -230,7 +230,7 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 		break;
 	}
 	case (CSharpParser::CompletionType::COMPLETION_TYPE): {
-		auto types = get_visible_types(VIS_ALL);
+		auto types = get_visible_types();
 		for (auto t : types)
 			options.push_back({ Option::KIND_CLASS, t->fullname() });
 
@@ -575,8 +575,13 @@ string CSharpContext::simplify_expression(const string expr)
 	lexer.tokenize();
 	auto tokens = lexer.get_tokens();
 
+	int prev_visibility = this->visibility;
+	this->visibility = VIS_ALL;
+
 	int pos = 0;
 	string res = simplify_expr_tokens(tokens, pos);
+
+	this->visibility = prev_visibility;
 
 	return res;
 }
@@ -596,7 +601,7 @@ void CSharpContext::skip_redundant_prefix(const vector<CSharpLexer::TokenData> &
 			redundant_prefix.push_back(tk);
 			//if (ctx->is_visible(redundant_prefix)) { TODO: ctx jest niedokonczonym obiektem... jakis blad przy parsowaniu
 			//if (ctx_namespace->is_visible(redundant_prefix)) {
-			if (!get_types_by_name(tk, VIS_ALL).empty()) {
+			if (!get_types_by_name(tk).empty()) {
 				pos += 2;
 			} 
 			
@@ -714,7 +719,7 @@ list<CSP::NamespaceNode*> CSharpContext::get_visible_namespaces()
 	return lst;
 }
 
-list<CSP::TypeNode*> CSharpContext::get_visible_types(int visibility)
+list<CSP::TypeNode*> CSharpContext::get_visible_types()
 {
 	ASSURE_CTX(list<CSP::TypeNode*>());
 
@@ -728,7 +733,7 @@ list<CSP::TypeNode*> CSharpContext::get_visible_types(int visibility)
 	return res;
 }
 
-list<CSP::MethodNode*> CSharpContext::get_visible_methods(int visibility)
+list<CSP::MethodNode*> CSharpContext::get_visible_methods()
 {
 	ASSURE_CTX(list<CSP::MethodNode*>());
 
@@ -756,7 +761,7 @@ list<CSP::MethodNode*> CSharpContext::get_visible_methods(int visibility)
 	return res;
 }
 
-list<CSP::VarNode*> CSharpContext::get_visible_vars(int visibility)
+list<CSP::VarNode*> CSharpContext::get_visible_vars()
 {
 	ASSURE_CTX(list<CSP::VarNode*>());
 
@@ -783,7 +788,7 @@ list<string> CSharpContext::get_visible_labels() {
 }
 
 
-list<CSP::TypeNode*> CSharpContext::get_types_by_name(string name, int visibility)
+list<CSP::TypeNode*> CSharpContext::get_types_by_name(string name)
 {
 	ASSURE_CTX(list<CSP::TypeNode*>());
 
@@ -791,29 +796,29 @@ list<CSP::TypeNode*> CSharpContext::get_types_by_name(string name, int visibilit
 
 	// TODO to mo¿na przyspieszyæ szukaj¹c explicite a nie korzystaj¹c z get_visible_types
 	// TODO dodaæ cache dla kontekstu (byæ mo¿e wiele razy odwo³ujemy siê do nazwy danego typu)
-	auto visible_types = get_visible_types(visibility);
+	auto visible_types = get_visible_types();
 	MERGE_LISTS_COND(res, visible_types, NAME_COND);
 
 	return res;
 }
 
-list<CSP::MethodNode*> CSharpContext::get_methods_by_name(string name, int visibility)
+list<CSP::MethodNode*> CSharpContext::get_methods_by_name(string name)
 {
 	ASSURE_CTX(list<CSP::MethodNode*>());
 
 	list<CSP::MethodNode*> res;
-	auto visible_methods = get_visible_methods(visibility);
+	auto visible_methods = get_visible_methods();
 	MERGE_LISTS_COND(res, visible_methods, NAME_COND);
 
 	return res;
 }
 
-list<CSP::VarNode*> CSharpContext::get_vars_by_name(string name, int visibility)
+list<CSP::VarNode*> CSharpContext::get_vars_by_name(string name)
 {
 	ASSURE_CTX(list<CSP::VarNode*>());
 
 	list<CSP::VarNode*> res;
-	auto visible_vars = get_visible_vars(visibility);
+	auto visible_vars = get_visible_vars();
 	MERGE_LISTS_COND(res, visible_vars, NAME_COND);
 
 	return res;
@@ -828,17 +833,17 @@ CSP::Node* CSharpContext::get_by_fullname(string fullname)
 			return x;
 	}
 
-	for (auto x : get_visible_types(VIS_ALL)) {
+	for (auto x : get_visible_types()) {
 		if (fullname == x->fullname())
 			return x;
 	}
 
-	for (auto x : get_visible_vars(VIS_ALL)) {
+	for (auto x : get_visible_vars()) {
 		if (fullname == x->fullname())
 			return x;
 	}
 
-	for (auto x : get_visible_methods(VIS_ALL)) {
+	for (auto x : get_visible_methods()) {
 		if (fullname == x->fullname())
 			return x;
 	}
@@ -850,7 +855,7 @@ CSP::Node* CSharpContext::get_by_fullname(string fullname)
 
 // symulacja DFS przy przechodzeniu po drzewie wêz³ów - szukamy wszystkiego co pasuje
 // daje node'y takie, z jakim visibility przysz³o, ustawia nowe visibility dla dalszych wywolan rekurencyjnych
-list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos, int visibility) {
+list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos) {
 
 	// 1. . X   - konkretne dziecko
 	// 2. . EOF - wszystkie dzieci
@@ -881,7 +886,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 			else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
 				visibility = csc->get_visibility_by_var((CSP::VarNode*)x);
 
-			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2,visibility);
+			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
 			MERGE_LISTS(res, res_results);
 		}
 	}
@@ -890,6 +895,14 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 	else if (tokens[pos].type == CST::TK_PERIOD
 		&& tokens[pos+1].type == CST::TK_EOF)
 	{
+		if (IS_TYPE_NODE(invoker)) {
+			
+			bool static_ctx = visibility & VIS_STATIC;
+			visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker);
+			if (static_ctx)
+				visibility |= VIS_STATIC;
+		}
+
 		// "" means any child -> see SCAN_AND_ADD macro
 		auto children = invoker->get_members("",visibility);
 		MERGE_LISTS(res, children);
@@ -951,8 +964,6 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	//   3. class-name or namespace-name
 	//   4. variable
 
-	int visibility = VIS_ALL; // get all nodes!
-
 	list<CSP::Node*> res;
 	switch (tokens[0].type) {
 
@@ -961,7 +972,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
 		if (thisClass != nullptr) {
 			visibility &= ~VIS_STATIC;
-			auto nodes = get_nodes_by_simplified_expression_rec(thisClass, tokens, 1, visibility);
+			auto nodes = get_nodes_by_simplified_expression_rec(thisClass, tokens, 1);
 			MERGE_LISTS(res, nodes);
 		}
 		break;
@@ -993,7 +1004,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 
 		// FIND FURTHER
 		for (auto x : start) {
-			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1, visibility);
+			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
 			MERGE_LISTS(res, nodes);
 		}
 	}
@@ -1006,13 +1017,20 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 {
 	ASSURE_CTX(list<CSP::Node*>());
 
+	int prev_visibility = this->visibility;
+	this->visibility = VIS_ALL;
+
 	// jeœli wyra¿enie nie jest proste, to trzeba je uproœciæ
 	// nie proste = jakieœ wywo³anie funkcji
 	if (contains(expr, ')')) {
 		expr = simplify_expression(expr);
+		visibility &= ~VIS_STATIC; // no static, object context!
 	}
 
-	return get_nodes_by_simplified_expression(expr);
+	auto nodes = get_nodes_by_simplified_expression(expr);
+
+	this->visibility = prev_visibility;
+	return nodes;
 }
 
 list<CSP::Node*> CSharpContext::get_visible_in_ctx_by_name(string name)
@@ -1022,13 +1040,13 @@ list<CSP::Node*> CSharpContext::get_visible_in_ctx_by_name(string name)
 	auto visible_namespaces = get_visible_namespaces();
 	MERGE_LISTS_COND(res, visible_namespaces, CHILD_COND);
 
-	auto visible_types = get_visible_types(VIS_ALL);
+	auto visible_types = get_visible_types();
 	MERGE_LISTS_COND(res, visible_types, CHILD_COND);
 
-	auto visible_methods = get_visible_methods(VIS_ALL);
+	auto visible_methods = get_visible_methods();
 	MERGE_LISTS_COND(res, visible_methods, CHILD_COND);
 
-	auto visible_vars = get_visible_vars(VIS_ALL);
+	auto visible_vars = get_visible_vars();
 	MERGE_LISTS_COND(res, visible_vars, CHILD_COND);
 
 	return res;

@@ -6,6 +6,7 @@
 #include "csharp_lexer.h"
 #include "csharp_parser.h"
 #include "csharp_context.h"
+#include "csharp_utils.h"
 
 using namespace std;
 int main() {
@@ -43,8 +44,6 @@ int main() {
 	cout << "----- ----- -----" << endl;
 	lexer.print_tokens();
 
-
-	auto csc = CSharpContext::instance();
 
 	// PARSING
 	csc->update_state(str, filename);

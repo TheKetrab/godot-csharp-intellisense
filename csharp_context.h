@@ -4,6 +4,7 @@
 
 #include <unordered_map>
 #include "csharp_parser.h"
+#include "csharp_utils.h"
 
 using CSP = CSharpParser;
 using namespace std;
@@ -36,6 +37,7 @@ private:
 	CSharpContext();
 
 	bool include_constructors; // for get_visible_methods - tylko jesli uzywane przy wyrazeniu takim, ¿e by³o 'new'
+	int visibility = VIS_NONE;
 
 public:
 	static CSharpContext* instance();
@@ -48,13 +50,13 @@ public:
 
 	// get in context
 	list<CSP::NamespaceNode*> get_visible_namespaces();
-	list<CSP::TypeNode*> get_visible_types(int visibility);
-	list<CSP::MethodNode*> get_visible_methods(int visibility);
-	list<CSP::VarNode*> get_visible_vars(int visibility);
+	list<CSP::TypeNode*> get_visible_types();
+	list<CSP::MethodNode*> get_visible_methods();
+	list<CSP::VarNode*> get_visible_vars();
 	list<string> get_visible_labels();
-	list<CSP::TypeNode*> get_types_by_name(string name, int visibility);
-	list<CSP::MethodNode*> get_methods_by_name(string name, int visibility);
-	list<CSP::VarNode*> get_vars_by_name(string name, int visibility);
+	list<CSP::TypeNode*> get_types_by_name(string name);
+	list<CSP::MethodNode*> get_methods_by_name(string name);
+	list<CSP::VarNode*> get_vars_by_name(string name);
 	CSP::Node* get_by_fullname(string fullname);
 
 	list<CSP::Node*> find_by_shortcuts(string shortname);
@@ -87,7 +89,7 @@ public:
 	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
 	list<CSP::Node*> get_nodes_by_simplified_expression(const vector<CSharpLexer::TokenData> &tokens); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
-	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos, int visibility);
+	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
 	list<CSP::Node*> get_nodes_by_expression(string expr);
 	list<CSP::Node*> get_visible_in_ctx_by_name(string name);
 

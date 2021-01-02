@@ -2801,7 +2801,7 @@ string CSharpParser::MethodNode::get_type() const
 	if (CSP::is_base_type(return_type))
 		return return_type;
 	else {
-		list<CSP::TypeNode*> tn = csc->get_types_by_name(return_type,VIS_ALL);
+		list<CSP::TypeNode*> tn = csc->get_types_by_name(return_type);
 		if (tn.empty()) {
 			return return_type; // TODO error? not found
 		}
@@ -3137,7 +3137,7 @@ string CSharpParser::VarNode::get_type() const
 		return type;
 
 	// type node
-	list<CSP::TypeNode*> type_nodes = csc->get_types_by_name(type, VIS_ALL);
+	list<CSP::TypeNode*> type_nodes = csc->get_types_by_name(type);
 	if (type_nodes.empty()) {
 		return type; // TODO error? not found
 	}
