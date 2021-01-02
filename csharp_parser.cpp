@@ -656,6 +656,12 @@ CSharpParser::ClassNode* CSharpParser::_parse_class() {
 		_assert(CST::TK_CURLY_BRACKET_OPEN);
 		INCPOS(1); // skip '{'
 		while (_parse_class_member(node));
+
+		if (!node->any_constructor_declared) {
+			MethodNode* constructor = node->create_auto_generated_constructor();
+			node->methods.push_back(constructor);
+			node->any_constructor_declared = true;
+		}
 	}
 	catch (CSharpParserException &e) {
 		_escape();
@@ -735,10 +741,12 @@ string CSharpParser::_parse_new() {
 	// new type[n] {?}         --> new int[5] { optional_block }
 	// new { ... } (anonymous) --> new { x = 1, y = 2 }
 
+	prev_expression = cur_expression;
+
 	_assert(CST::TK_KW_NEW);
 
 	INCPOS(1); // skip 'new'
-	string res = "new ";
+	cur_expression = "new ";
 
 	switch (GETTOKEN(0)) {
 
@@ -746,7 +754,7 @@ string CSharpParser::_parse_new() {
 
 	case CST::TK_CURLY_BRACKET_OPEN: {
 		string initialization_block = _parse_initialization_block();
-		res += initialization_block;
+		cur_expression += initialization_block;
 		break;
 	}
 	case CST::TK_CURLY_BRACKET_CLOSE: {
@@ -756,23 +764,24 @@ string CSharpParser::_parse_new() {
 
 	CASEBASETYPE {
 		string type = _parse_type(true);
-		res += type;
+		cur_expression += type;
 		if (GETTOKEN(0) == CST::TK_CURLY_BRACKET_OPEN) {
 			string initialization_block = _parse_initialization_block();
-			res += " " + initialization_block;
+			cur_expression += " " + initialization_block;
 		}
 		break;
 	}
 
 	case CST::TK_IDENTIFIER: {
 		string type = _parse_type(true);
-		res += type;
+		cur_expression += type;
 		if (GETTOKEN(0) == CST::TK_CURLY_BRACKET_OPEN) {
+			cur_expression += "{";
 			string initialization_block = _parse_initialization_block();
-			res += " " + initialization_block;
+			cur_expression += initialization_block;
+			cur_expression += "}";
 		} else if (GETTOKEN(0) == CST::TK_PARENTHESIS_OPEN) {
-			string invocation = _parse_method_invocation();
-			res += invocation;
+			_parse_method_invocation();
 		}
 		break;
 	}
@@ -781,6 +790,9 @@ string CSharpParser::_parse_new() {
 		_unexpeced_token_error();
 	}
 	}
+
+	string res = cur_expression;
+	cur_expression = prev_expression;
 
 	return res;
 }
@@ -1581,6 +1593,8 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 				break;
 			}
 
+			this->modifiers |= (int)Modifier::MOD_CONSTRUCTOR;
+			node->any_constructor_declared = true;
 			MethodNode* member = _parse_method_declaration(type, type);
 			if (member != nullptr) {
 				node->methods.push_back(member);
@@ -2477,25 +2491,25 @@ string CSharpParser::_parse_method_invocation() {
 
 	_assert(CST::TK_PARENTHESIS_OPEN);
 	INCPOS(1);
-	string res = "(";
+	cur_expression += "(";
 
 	// ARGUMETNS
 	while (!_is_actual_token(CST::TK_PARENTHESIS_CLOSE)) {
 
 		if (_is_actual_token(CST::TK_COMMA)) {
-			res += " , ";
+			cur_expression += " , ";
 			INCPOS(1);
 		}
 		else {
-			res += _parse_expression();
+			cur_expression += _parse_expression();
 		}
 
 	}
 
-	res += ")";
+	cur_expression += ")";
 	INCPOS(1);
 
-	return res;
+	return ""; // todo! no return ...
 
 }
 
@@ -2850,7 +2864,8 @@ list<CSP::Node*> CSharpParser::VarNode::get_members(const string name, int visib
 
 	CSP::TypeNode* type_of_var = (CSP::TypeNode*)nodes.front();
 
-	visibility = csc->get_visibility_by_invoker_type(type_of_var);
+	visibility &= ~VIS_STATIC; // no longer static!
+	visibility = csc->get_visibility_by_invoker_type(type_of_var, visibility);
 
 	return type_of_var->get_members(name, visibility);
 
@@ -2875,6 +2890,11 @@ list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars(int visi
 	}
 
 	return res;
+}
+
+bool CSharpParser::MethodNode::is_constructor()
+{
+	return this->modifiers & (int)Modifier::MOD_CONSTRUCTOR;
 }
 
 CSharpParser::InterfaceNode::~InterfaceNode()
@@ -3068,7 +3088,8 @@ list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods(in
 	list<MethodNode*> res;
 
 	// methods from current node
-	MERGE_LISTS_COND(res, methods, VISIBILITY_COND);
+	MERGE_LISTS_COND(res, methods, 
+		((!!(visibility & VIS_CONSTRUCT) == x->is_constructor()) && VISIBILITY_COND));
 
 	// derived methods
 	for (auto x : base_types) {
@@ -3120,11 +3141,25 @@ list<CSharpParser::Node*> CSharpParser::StructNode::get_members(const string nam
 list<CSP::MethodNode*> CSharpParser::StructNode::get_constructors(int visibility) const
 {
 	list<CSP::MethodNode*> res;
-	for (auto x : methods)
-		if (x->return_type == this->name && VISIBILITY_COND)
-			res.push_back(x);
+
+	MERGE_LISTS_COND(res, methods, 
+		((x->modifiers & (int)Modifier::MOD_CONSTRUCTOR) && VISIBILITY_COND));
 
 	return res;
+}
+
+CSP::MethodNode* CSharpParser::StructNode::create_auto_generated_constructor()
+{
+	CSharpLexer::TokenData td;
+	MethodNode* node = new MethodNode(td);
+
+	node->name = this->name;
+	node->return_type = this->name;
+	node->node_type = CSP::Node::Type::METHOD;
+	node->parent = this;
+	node->modifiers = ((int)Modifier::MOD_PUBLIC | (int)Modifier::MOD_CONSTRUCTOR);
+
+	return node;
 }
 
 void CSharpParser::StatementNode::print(int indent) const

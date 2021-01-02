@@ -231,6 +231,10 @@ class CSharpParser {
 		virtual list<Node*> get_members(const string name, int visibility) const override;
 		list<MethodNode*> get_constructors(int visibility) const;
 
+		bool any_constructor_declared = false;
+		MethodNode* create_auto_generated_constructor();
+
+
 	};
 
 	struct ClassNode : public StructNode {
@@ -256,6 +260,7 @@ class CSharpParser {
 
 		// NOTE: this method will be visible because will be visible in current class (parrent)
 		virtual list<VarNode*> get_visible_vars(int visibility) const override;
+		bool is_constructor();
 
 	};
 
@@ -397,6 +402,7 @@ public:
 		MOD_IN = 1 << 17,        // for variables
 		MOD_OUT = 1 << 18,       //
 		MOD_PARAMS = 1 << 19,    //
+		MOD_CONSTRUCTOR = 1 << 20,
 
 		MOD_PPP = MOD_PUBLIC | MOD_PROTECTED | MOD_PRIVATE
 	};

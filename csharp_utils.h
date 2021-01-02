@@ -53,7 +53,8 @@ const int VIS_PRIVATE      = 1 << 2;  // private
 const int VIS_STATIC       = 1 << 3;  // static
 const int VIS_PPP          = 7;       // public, protected & private
 const int VIS_PP           = 3;       // public & protected
-const int VIS_ALL = VIS_PPP | VIS_STATIC;
+const int VIS_CONSTRUCT    = 1 << 4;  // constructors
+const int VIS_ALL = VIS_PPP | VIS_STATIC | VIS_CONSTRUCT;
 
 string substr(string s, char c);
 bool contains(string s, char c);

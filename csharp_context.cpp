@@ -884,7 +884,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 			if (!(IS_TYPE_NODE(x))) // no longer static
 				visibility &= ~VIS_STATIC;
 			else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
-				visibility = csc->get_visibility_by_var((CSP::VarNode*)x);
+				visibility = csc->get_visibility_by_var((CSP::VarNode*)x, visibility);
 
 			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
 			MERGE_LISTS(res, res_results);
@@ -895,12 +895,8 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 	else if (tokens[pos].type == CST::TK_PERIOD
 		&& tokens[pos+1].type == CST::TK_EOF)
 	{
-		if (IS_TYPE_NODE(invoker)) {
-			
-			bool static_ctx = visibility & VIS_STATIC;
-			visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker);
-			if (static_ctx)
-				visibility |= VIS_STATIC;
+		if (IS_TYPE_NODE(invoker)) {			
+			visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker, visibility);
 		}
 
 		// "" means any child -> see SCAN_AND_ADD macro
@@ -1019,6 +1015,11 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 
 	int prev_visibility = this->visibility;
 	this->visibility = VIS_ALL;
+
+	if (!contains(expr, "new ")) // new + space
+		this->visibility &= ~VIS_CONSTRUCT;
+	else
+		expr = expr.substr(4, expr.length() - 4);
 
 	// jeœli wyra¿enie nie jest proste, to trzeba je uproœciæ
 	// nie proste = jakieœ wywo³anie funkcji
@@ -1150,7 +1151,7 @@ CSharpContext::Option CSharpContext::node_type_to_option(CSP::Node::Type node_ty
 
 }
 
-CSP::TypeNode * CSharpContext::get_type_by_expression(string expr)
+CSP::TypeNode* CSharpContext::get_type_by_expression(string expr)
 {
 	// auto nodes = get_nodes_by_expression(expr); TODO: to powoduje nieskonczona rekursje!
 	auto nodes = find_by_shortcuts(expr); // TODO powinno byc by expression
@@ -1161,22 +1162,23 @@ CSP::TypeNode * CSharpContext::get_type_by_expression(string expr)
 	return nullptr;
 }
 
-// jeœli wywo³ujemy coœ na OBIEKCIE a nie na klasie
-int CSharpContext::get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object) {
+// zmienia widzialnoœæ public private protected
+int CSharpContext::get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object, int visibility) {
 
-	int visibility = VIS_NONE;
+	// disable pri, pro & pub and set it again
+	visibility &= ~VIS_PPP;
 
 	if (csc->cinfo.ctx_class == type_of_invoker_object)
-		visibility = VIS_PPP;
+		visibility |= VIS_PPP;
 	else if (csc->on_class_chain(csc->cinfo.ctx_class, type_of_invoker_object))
-		visibility = VIS_PP;
+		visibility |= VIS_PP;
 	else
-		visibility = VIS_PUBLIC;
+		visibility |= VIS_PUBLIC;
 
 	return visibility;
 }
 
-int CSharpContext::get_visibility_by_var(const CSP::VarNode* var_invoker_object)
+int CSharpContext::get_visibility_by_var(const CSP::VarNode* var_invoker_object, int visibility)
 {
 	string return_type = var_invoker_object->get_type();
 	auto nodes = csc->get_nodes_by_expression(return_type);
@@ -1186,7 +1188,8 @@ int CSharpContext::get_visibility_by_var(const CSP::VarNode* var_invoker_object)
 
 	CSP::TypeNode* type_of_var = (CSP::TypeNode*)nodes.front();
 
-	int visibility = csc->get_visibility_by_invoker_type(type_of_var);
+	visibility &= ~VIS_STATIC; // assure to disable static (because on object)
+	visibility = csc->get_visibility_by_invoker_type(type_of_var, visibility);
 
 	return visibility;
 }

@@ -97,8 +97,8 @@ public:
 	bool on_class_chain(const CSP::TypeNode* derive, const CSP::TypeNode* base); // czy jest na lancuchu dziedziczenia
 
 	CSP::TypeNode* get_type_by_expression(string expr);
-	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object);
-	int get_visibility_by_var(const CSP::VarNode* var_invoker_object);
+	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object, int visibility);
+	int get_visibility_by_var(const CSP::VarNode* var_invoker_object, int visibility);
 };
 
 #endif // CSHARP_CONTEXT_H
