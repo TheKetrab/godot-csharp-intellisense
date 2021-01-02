@@ -175,7 +175,7 @@ class CSharpParser {
 		vector<string> members;
 
 		EnumNode(TD td) : Node(Type::ENUM, td) {}
-		~EnumNode() {}
+		virtual ~EnumNode() {}
 		void print(int indent = 0) const override;
 	};
 
@@ -186,6 +186,7 @@ class CSharpParser {
 		vector<string> generic_declarations;
 		string constraints; // generyczne: where ... 
 		GenericNode(Type t, TD td) : Node(t,td) {}
+		virtual ~GenericNode() {}
 
 	};
 
@@ -194,7 +195,7 @@ class CSharpParser {
 
 		vector<string> base_types; // base class and interfaces
 		TypeNode(Type t, TD td) : GenericNode(t, td) {}
-
+		virtual ~TypeNode() {}
 	};
 
 	struct InterfaceNode : public TypeNode {
@@ -235,6 +236,7 @@ class CSharpParser {
 	struct ClassNode : public StructNode {
 
 		ClassNode(TD td) : StructNode(td) { node_type = Type::CLASS; }
+		virtual ~ClassNode() {}
 		void print(int indent = 0) const override;
 	};
 
@@ -303,13 +305,14 @@ class CSharpParser {
 		StatementNode* prev = nullptr; // polaczone w liste, zeby mozna bylo przejsc do tylu i poszukac deklaracji
 
 		StatementNode(TD td) : Node(Type::STATEMENT,td) {}
-		~StatementNode() {}
+		virtual ~StatementNode() {}
 		void print(int indent = 0) const override;
 	};
 
 	struct ExpressionNode : public StatementNode {
 
 		ExpressionNode(TD td) : StatementNode(td) {}
+		virtual ~ExpressionNode() {}
 		string expression;
 	};
 
@@ -322,6 +325,7 @@ class CSharpParser {
 	};
 
 	struct ConditionNode : public StatementNode {
+		virtual ~ConditionNode() {}
 		ConditionNode(TD td) : StatementNode(td) {}
 	};
 
@@ -332,6 +336,7 @@ class CSharpParser {
 		};
 
 		LoopNode(TD td) : StatementNode(td) {}
+		virtual ~LoopNode() {}
 		LoopNode::Type loop_type = Type::UNKNOWN;
 		VarNode* local_variable = nullptr;
 		StatementNode* body = nullptr;
@@ -340,6 +345,7 @@ class CSharpParser {
 	struct DeclarationNode : public StatementNode {
 
 		DeclarationNode(TD td) : StatementNode(td) { node_type = Type::DECLARATION; }
+		virtual ~DeclarationNode() {}
 		VarNode* variable;
 	};
 
@@ -350,18 +356,21 @@ class CSharpParser {
 		};
 
 		JumpNode(TD td) : StatementNode(td) {}
+		virtual ~JumpNode() {}
 		JumpNode::Type jump_type = Type::UNKNOWN;
 	};
 
 	struct TryNode : public StatementNode {
 
 		TryNode(TD td) : StatementNode(td) {}
+		virtual ~TryNode() {}
 		vector<StatementNode*> blocks; // try, catch blocks and finally
 	};
 
 	struct UsingNode : public StatementNode {
 
 		UsingNode(TD td) : StatementNode(td) {}
+		virtual ~UsingNode() {}
 		VarNode* local_variable = nullptr;
 		StatementNode* body = nullptr;
 	};
@@ -423,6 +432,9 @@ private:
 
 	// completion info
 	struct CompletionInfo {
+
+		// error flag
+		int error = 0;
 
 		// msg
 		int cur_arg = -1;

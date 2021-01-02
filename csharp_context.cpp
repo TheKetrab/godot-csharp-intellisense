@@ -1096,6 +1096,9 @@ bool CSharpContext::function_match(CSP::MethodNode* method, string function_call
 
 bool CSharpContext::on_class_chain(const CSP::TypeNode* derive, const CSP::TypeNode* base)
 {
+	if (derive == nullptr || base == nullptr)
+		return false;
+
 	if (derive == base)
 		return true;
 

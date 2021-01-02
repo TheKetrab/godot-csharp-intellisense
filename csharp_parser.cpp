@@ -2679,16 +2679,41 @@ CSharpParser::Node::Node(Type t, TD td) {
 
 CSharpParser::Node::~Node() {
 
-	// TODO: shared ptr and weak ptr
-	if (active_parser->cinfo.ctx_cursor == this)
+	if (active_parser->cinfo.ctx_cursor == this) {
 		active_parser->cinfo.ctx_cursor = nullptr;
-	if (active_parser->cinfo.ctx_block == this)
+		// deleting cursor allowed!
+	}
+	else if (active_parser->cinfo.ctx_block == this) {
 		active_parser->cinfo.ctx_block = nullptr;
-	if (active_parser->cinfo.ctx_class == this)
+		active_parser->cinfo.error = 1;
+	}
+	else if (active_parser->cinfo.ctx_class == this) {
 		active_parser->cinfo.ctx_class = nullptr;
-	if (active_parser->cinfo.ctx_namespace == this)
+		active_parser->cinfo.error = 1;
+	}
+	else if (active_parser->cinfo.ctx_namespace == this) {
 		active_parser->cinfo.ctx_namespace = nullptr;
+		active_parser->cinfo.error = 1;
+	}
 
+	else {
+
+		// restore path from cursor to root if one node from path is deleted
+		for (CSP::Node* temp = active_parser->cinfo.ctx_cursor;
+			temp != nullptr && active_parser->cinfo.error == 0; temp = temp->parent) {
+
+			if (temp == this)
+				active_parser->cinfo.error = 1;
+
+			//if (temp->parent == this) {
+			//	if (temp->parent->parent != nullptr)
+			//		temp->parent = temp->parent->parent;
+			//	else
+			//		temp->parent = nullptr;
+			//}
+
+		}
+	}
 }
 
 CSharpParser::BlockNode::~BlockNode()

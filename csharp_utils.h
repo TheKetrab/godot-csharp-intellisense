@@ -7,7 +7,7 @@
 using namespace std;
 
 #define ASSURE_CTX(def_ret) \
-	if (cinfo.ctx_cursor == nullptr) \
+	if (cinfo.ctx_cursor == nullptr || cinfo.error != 0) \
 		return def_ret;
 
 #define MERGE_LISTS(lst1,lst2) \
