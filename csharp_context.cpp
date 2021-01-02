@@ -440,7 +440,12 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 	string func_name = splitted[0];
 	int n = splitted.size();
 
+	int prev_visibility = this->visibility;
+	this->visibility = VIS_ALL;
+	this->visibility &= ~VIS_CONSTRUCT;
 	auto nodesAll = get_nodes_by_simplified_expression(func_name);
+	this->visibility = prev_visibility;
+
 	list<CSP::MethodNode*> nodes;
 	for (auto x : nodesAll)
 		if (x->node_type == CSP::Node::Type::METHOD) {

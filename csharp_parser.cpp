@@ -2629,6 +2629,9 @@ bool CSharpParser::is_base_type(string type) {
 // cast (rzutowanie) - explicite
 bool CSharpParser::coercion_possible(string from, string to)
 {
+	if (from == to)
+		return true;
+
 	set<string> numeric = {
 		"int", "long", "short",
 		"uint", "ulong", "ushort",
@@ -2647,8 +2650,35 @@ bool CSharpParser::coercion_possible(string from, string to)
 	if (to == "object")
 		return true;
 
+	// ----- ----- ----- ----- -----
 	// derived -> base
-	// TODO -> return true;
+	auto from_nodes = csc->get_nodes_by_expression(from);
+	CSP::TypeNode* from_type = nullptr;
+	for (auto x : from_nodes)
+		if (IS_TYPE_NODE(x))
+		{
+			from_type = (CSP::TypeNode*)x;
+			break;
+		}
+
+	if (from_type == nullptr)
+		return false;
+
+	auto to_nodes = csc->get_nodes_by_expression(to);
+	CSP::TypeNode* to_type = nullptr;
+	for (auto x : to_nodes)
+		if (IS_TYPE_NODE(x))
+		{
+			to_type = (CSP::TypeNode*)x;
+			break;
+		}
+
+	if (to_type == nullptr)
+		return false;
+
+
+	if (csc->on_class_chain(from_type, to_type))
+		return true;
 
 	return false;
 }
