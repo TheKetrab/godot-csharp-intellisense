@@ -19,6 +19,16 @@ class completion_error : exception {
 
 // https://docs.microsoft.com/en-us/archive/msdn-magazine/2019/october/csharp-accessing-xml-documentation-via-reflection
 
+class ICSharpProvider {
+
+public:
+	vector<string> using_directives;
+
+	virtual list<CSP::TypeNode*> get_visible_types() const = 0;
+	virtual list<CSP::Node*> find_by_name(string name) const = 0;
+	virtual CSP::TypeNode* resolve_base_type(string base_type) const = 0;
+};
+
 class CSharpContext {
   public:
 	enum class Option {
@@ -36,10 +46,13 @@ private:
 	static CSharpContext* _instance;
 	CSharpContext();
 
+	ICSharpProvider* _provider = nullptr;
+
 	bool include_constructors; // for get_visible_methods - tylko jesli uzywane przy wyrazeniu takim, ¿e by³o 'new'
 	int visibility = VIS_NONE;
 
 public:
+	void register_provider(ICSharpProvider* provider);
 	static CSharpContext* instance();
 	~CSharpContext();
 	unordered_map<string, CSP::FileNode*> files; // dane o plikach przez nazwe
@@ -100,5 +113,25 @@ public:
 	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object, int visibility);
 	int get_visibility_by_var(const CSP::VarNode* var_invoker_object, int visibility);
 };
+
+
+
+/*
+// contract for node provider
+class ICSharpNode {
+
+public:
+	virtual int get_node_type() const = 0; // 0 - NONE, 1 - TYPE, 2 - METHOD, 3 - PROP, 4 - VAR
+	virtual string fullname() const = 0;
+	virtual string prettyname() const = 0;
+	virtual list<ICSharpNode*> get_members(const string name, int visibility) const = 0;
+
+	virtual string get_type() const = 0; // return type
+	virtual bool is_public() const = 0;
+	virtual bool is_protected() const = 0;
+	virtual bool is_private() const = 0;
+	virtual bool is_static() const = 0;
+};
+*/
 
 #endif // CSHARP_CONTEXT_H

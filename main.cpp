@@ -9,21 +9,35 @@
 #include "csharp_utils.h"
 
 using namespace std;
-int main() {
+int main(int argc, const char* argv[]) {
 
-	string filename = "x.cs";
+	string code;
+	string filename;
 
-	ifstream file;
-	file.open(filename);
+	if (argc == 1) {
 
-	stringstream str_stream;
-	str_stream << file.rdbuf();
-	string str = str_stream.str();
+		filename = "x.cs";
+
+		ifstream file;
+		file.open(filename);
+
+		stringstream str_stream;
+		str_stream << file.rdbuf();
+		code = str_stream.str();
+
+	}
+	else {
+
+		code = argv[1];
+		filename = "input.cs";
+
+	}
+
 	
 	cout << "----- ----- -----" << endl;
 	cout << "  Code: " << endl;
 	cout << "----- ----- -----" << endl;
-	cout << str << endl;
+	cout << code << endl;
 
 	/*
 	// ASCII PRINT
@@ -36,7 +50,7 @@ int main() {
 	*/
 
 	// LEXING
-	CSharpLexer lexer(str);
+	CSharpLexer lexer(code);
 	lexer.tokenize();
 
 	cout << "----- ----- -----" << endl;
@@ -46,7 +60,7 @@ int main() {
 
 
 	// PARSING
-	csc->update_state(str, filename);
+	csc->update_state(code, filename);
 
 
 

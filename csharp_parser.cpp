@@ -3355,6 +3355,7 @@ void CSharpParser::FileNode::print(int indent) const
 	cout << "FILE " << name << ":" << endl;
 
 	// HEADERS:
+	if (using_directives.size() > 0) print_header(indent + TAB, using_directives, "> using:");
 	if (namespaces.size() > 0) print_header(indent + TAB, namespaces, "> namespaces:");
 	if (interfaces.size() > 0) print_header(indent + TAB, interfaces, "> interfaces:");
 	if (classes.size() > 0)    print_header(indent + TAB, classes, "> classes:");
