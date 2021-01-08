@@ -9,36 +9,55 @@
 #include "csharp_utils.h"
 
 using namespace std;
+
+string read_file(string path) {
+
+	ifstream file;
+	file.open(path);
+
+	stringstream str_stream;
+	str_stream << file.rdbuf();
+	string code = str_stream.str();
+
+	file.close();
+
+	return code;
+}
+
 int main(int argc, const char* argv[]) {
 
-	string code;
-	string filename;
-
+	// input: filename x code
+	vector<pair<string, string>> files;
+	
 	if (argc == 1) {
 
-		filename = "x.cs";
+		string filename = "x.cs";
+		string code = read_file(filename);
 
-		ifstream file;
-		file.open(filename);
-
-		stringstream str_stream;
-		str_stream << file.rdbuf();
-		code = str_stream.str();
+		files.push_back({ filename,code });
 
 	}
 	else {
 
-		code = argv[1];
-		filename = "input.cs";
+		string paths = argv[1];
+		auto splitted = split(paths, ' ');
+
+		for (auto x : splitted) {
+
+			string filename = x;
+			string code = read_file(filename);
+
+			files.push_back({ filename,code });
+		}
 
 	}
 
-	
+	/*
 	cout << "----- ----- -----" << endl;
 	cout << "  Code: " << endl;
 	cout << "----- ----- -----" << endl;
 	cout << code << endl;
-
+	*/
 	/*
 	// ASCII PRINT
 	cout << "----- ----- -----" << endl;
@@ -50,6 +69,7 @@ int main(int argc, const char* argv[]) {
 	*/
 
 	// LEXING
+	/*
 	CSharpLexer lexer(code);
 	lexer.tokenize();
 
@@ -57,20 +77,26 @@ int main(int argc, const char* argv[]) {
 	cout << "  Tokens: " << endl;
 	cout << "----- ----- -----" << endl;
 	lexer.print_tokens();
-
+	*/
 
 	// PARSING
-	csc->update_state(code, filename);
+	for (auto x : files) {
+
+		string filename = x.first;
+		string code = x.second;
+		csc->update_state(code, filename);
+
+	}
 
 
 
 	// PRINT
-	csc->print();
+	//csc->print(); // print structure of files
 
-	csc->print_visible();
+	//csc->print_visible();
 
-	cout << endl << endl << endl;
-	cout << "OPTIONS:" << endl;
+	//cout << endl << endl << endl;
+	//cout << "OPTIONS:" << endl;
 	csc->print_options();
 	//cout << "deduced type = " << res << endl;
 

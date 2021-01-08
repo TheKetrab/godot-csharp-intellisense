@@ -210,7 +210,7 @@ void CSharpParser::_parse_modifiers() {
 }
 
 void CSharpParser::error(string msg) const {
-	cout << "--> " << ((cinfo.ctx_cursor == nullptr) ? "" : "(cursor found) ") << "Error: " << msg << endl;
+	//cout << "--> " << ((cinfo.ctx_cursor == nullptr) ? "" : "(cursor found) ") << "Error: " << msg << endl;
 	throw CSharpParserException(msg);
 }
 
@@ -454,7 +454,7 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 				}
 			}
 		}
-		catch (CSharpParserException &e) {
+		catch (CSharpParserException&) {
 			_escape();
 			return nullptr;
 		}
@@ -473,7 +473,7 @@ CSharpParser::NamespaceNode* CSharpParser::_parse_namespace(bool global = false)
 		INCPOS(1); // skip '{'
 		while (_parse_namespace_member(node));
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -496,7 +496,7 @@ CSharpParser::FileNode * CSharpParser::_parse_file()
 		while (_parse_using_directive(node));
 		while (_parse_namespace_member(node));
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		// probably found eof token
 	}
 
@@ -663,7 +663,7 @@ CSharpParser::ClassNode* CSharpParser::_parse_class() {
 			node->any_constructor_declared = true;
 		}
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -1066,7 +1066,7 @@ CSharpParser::EnumNode* CSharpParser::_parse_enum() {
 			}
 		}
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -1121,7 +1121,7 @@ CSharpParser::JumpNode* CSharpParser::_parse_jump() {
 			}
 		}
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -1226,7 +1226,7 @@ CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 		}
 
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -1435,7 +1435,7 @@ bool CSharpParser::_parse_using_directive(FileNode* node) {
 		node->using_directives.push_back(name_or_type);
 
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_skip_until_next_line(); // skip this using line
 	}
 
@@ -1767,7 +1767,7 @@ CSharpParser::VarNode* CSharpParser::_parse_declaration() {
 		string expression = _parse_expression();
 		variable->value = expression;
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete variable;
 		variable = nullptr;
@@ -1824,7 +1824,7 @@ CSharpParser::InterfaceNode* CSharpParser::_parse_interface() {
 		INCPOS(1); // skip '}'
 		while (_parse_interface_member(node));
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -1898,7 +1898,7 @@ CSharpParser::UsingNode* CSharpParser::_parse_using_statement() {
 		statement->parent = node;
 
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -1958,7 +1958,7 @@ CSharpParser::ConditionNode* CSharpParser::_parse_if_statement() {
 			node->raw += else_st->raw;
 		}
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -2026,7 +2026,7 @@ CSharpParser::TryNode* CSharpParser::_parse_try_statement()
 			finally_block->parent = node;
 		}
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -2060,7 +2060,7 @@ CSharpParser::ConditionNode* CSharpParser::_parse_switch_statement() {
 		_skip_until_token(CST::TK_CURLY_BRACKET_CLOSE);
 		INCPOS(1); // skip '}'
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -2188,7 +2188,7 @@ CSharpParser::PropertyNode* CSharpParser::_parse_property(string name, string ty
 			}
 		}
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -2358,7 +2358,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 		}
 
 	}
-	catch (const CSharpParserException &e)
+	catch (const CSharpParserException&)
 	{
 		return nullptr;
 	}
@@ -2474,7 +2474,7 @@ CSharpParser::MethodNode* CSharpParser::_parse_method_declaration(string name, s
 		root->node_shortcuts.insert({ node->fullname(),node });
 
 	}
-	catch (CSharpParserException &e) {
+	catch (CSharpParserException&) {
 		_escape();
 		delete node;
 		node = nullptr;
@@ -2883,8 +2883,11 @@ string CSharpParser::MethodNode::get_type() const
 list<CSP::Node*> CSharpParser::VarNode::get_members(const string name, int visibility) const
 {
 	string return_type = get_type();
-	if (return_type.empty() || is_base_type(return_type))
+	if (return_type.empty())
 		return list<CSP::Node*>(); // TODO: is_base_type -> get members for base types
+
+	if (is_base_type(return_type))
+		return csc->get_children_of_base_type(return_type);
 
 	// else -> cast to TypeNode and get members
 	auto nodes = csc->get_nodes_by_expression(return_type);

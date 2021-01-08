@@ -24,6 +24,32 @@ bool contains(string s, string substr)
 	return false;
 }
 
+vector<string> split(string s, char c) {
+
+	vector<string> res;
+	string word;
+
+	bool end = false;
+	for (int i = 0; !end; i++)
+	{
+		if (s[i] == '\0' || s[i] == c) {
+			if (!word.empty()) {
+				res.push_back(word);
+				word.clear();
+			}
+			if (s[i] == '\0')
+				end = true;
+		}
+		else {
+			word += s[i];
+		}
+	}
+
+	return res;
+
+
+}
+
 // eg. f1(int,bool) or f2(int,double,  <-- not totally resolved
 vector<string> split_func(string s) {
 	vector<string> res;

@@ -61,6 +61,6 @@ bool contains(string s, char c);
 bool contains(string s, string substr);
 vector<string> split_func(string s);
 string join_vector(const vector<string> &v, const string &joiner);
-
+vector<string> split(string s, char c);
 
 #endif // CSHARP_UTILS_H

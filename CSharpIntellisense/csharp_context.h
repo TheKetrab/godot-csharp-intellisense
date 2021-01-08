@@ -46,12 +46,15 @@ private:
 	static CSharpContext* _instance;
 	CSharpContext();
 
-	ICSharpProvider* _provider = nullptr;
 
 	bool include_constructors; // for get_visible_methods - tylko jesli uzywane przy wyrazeniu takim, ¿e by³o 'new'
 	int visibility = VIS_NONE;
 
 public:
+	ICSharpProvider* _provider = nullptr;
+
+	bool provider_registered = false;
+
 	void register_provider(ICSharpProvider* provider);
 	static CSharpContext* instance();
 	~CSharpContext();
@@ -112,6 +115,8 @@ public:
 	CSP::TypeNode* get_type_by_expression(string expr);
 	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object, int visibility);
 	int get_visibility_by_var(const CSP::VarNode* var_invoker_object, int visibility);
+
+	list<CSP::Node*> get_children_of_base_type(string base_type) const;
 };
 
 

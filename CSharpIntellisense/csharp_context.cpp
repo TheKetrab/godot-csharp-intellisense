@@ -166,6 +166,7 @@ void CSharpContext::print() {
 
 void CSharpContext::register_provider(ICSharpProvider* provider)
 {
+	provider_registered = true;
 	_provider = provider;
 }
 
@@ -821,17 +822,37 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 	if (tokens[pos].type == CST::TK_PERIOD
 		&& tokens[pos + 1].type == CST::TK_IDENTIFIER)
 	{
-		string child_name = tokens[pos + 1].data;
-		auto children = invoker->get_members(child_name, visibility);
-		for (auto x : children) {
+		if (invoker->created_by_provider) {
 
-			if (!(IS_TYPE_NODE(x))) // no longer static
-				visibility &= ~VIS_STATIC;
-			else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
-				visibility = csc->get_visibility_by_var((CSP::VarNode*)x, visibility);
+			// dynamically create nodes
+			string child_name = tokens[pos + 1].data;
+			if (_provider != nullptr) {
 
-			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
-			MERGE_LISTS(res, res_results);
+				auto children = _provider->get_child_dynamic(invoker->provider_data, child_name);
+				for (auto x : children) {
+
+					// TODO visibility
+					auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
+					MERGE_LISTS(res, res_results);
+				}
+			}
+
+		}
+
+		else {
+
+			string child_name = tokens[pos + 1].data;
+			auto children = invoker->get_members(child_name, visibility);
+			for (auto x : children) {
+
+				if (!(IS_TYPE_NODE(x))) // no longer static
+					visibility &= ~VIS_STATIC;
+				else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
+					visibility = csc->get_visibility_by_var((CSP::VarNode*)x, visibility);
+
+				auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
+				MERGE_LISTS(res, res_results);
+			}
 		}
 	}
 
@@ -839,13 +860,30 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 	else if (tokens[pos].type == CST::TK_PERIOD
 		&& tokens[pos+1].type == CST::TK_EOF)
 	{
-		if (IS_TYPE_NODE(invoker)) {			
-			visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker, visibility);
+
+		if (invoker->created_by_provider) {
+
+			if (_provider != nullptr) {
+
+				// TODO visibility
+				auto children = _provider->get_child_dynamic(invoker->provider_data, "");
+				MERGE_LISTS(res, children);
+
+			}
+
 		}
 
-		// "" means any child -> see SCAN_AND_ADD macro
-		auto children = invoker->get_members("",visibility);
-		MERGE_LISTS(res, children);
+		else {
+
+			if (IS_TYPE_NODE(invoker)) {
+				visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker, visibility);
+			}
+
+			// "" means any child -> see SCAN_AND_ADD macro
+			auto children = invoker->get_members("", visibility);
+			MERGE_LISTS(res, children);
+
+		}
 	}
 
 	// --- 3: '(' not closed function -> resolve args and match ---
@@ -1149,4 +1187,20 @@ int CSharpContext::get_visibility_by_var(const CSP::VarNode* var_invoker_object,
 	visibility = csc->get_visibility_by_invoker_type(type_of_var, visibility);
 
 	return visibility;
+}
+
+list<CSP::Node*> CSharpContext::get_children_of_base_type(string base_type) const
+{
+	if (_provider != nullptr) {
+
+		auto node = _provider->resolve_base_type(base_type);
+		if (node != nullptr) {
+			auto res = _provider->get_child_dynamic(node, "");
+			return res;
+		}
+
+
+	}
+
+	return list<CSP::Node*>();
 }
