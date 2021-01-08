@@ -25,7 +25,7 @@ void CSharpContext::update_state(string &code, string &filename) {
 			this->cinfo = CSP::CompletionInfo();
 		}
 
-		delete it->second;
+		//delete it->second;
 		files.erase(it);
 	}
 
@@ -41,8 +41,11 @@ void CSharpContext::update_state(string &code, string &filename) {
 
 	files.insert({ filename,node });
 
-	cinfo = parser.cinfo;
-	cinfo.ctx_file = node;
+	// update cursor info only if found in current file!
+	if (parser.cinfo.ctx_cursor != nullptr) {
+		cinfo = parser.cinfo;
+		cinfo.ctx_file = node;
+	}
 
 }
 
@@ -58,9 +61,12 @@ list<CSP::Node*> CSharpContext::find_by_shortcuts(string shortname)
 	list<CSP::Node*> res;
 	shortname = substr(shortname, '(');
 
-	for (auto s : cinfo.ctx_file->node_shortcuts) {
-		if (substr(s.first, '(') == shortname)
-			res.push_back(s.second);
+	for (auto f : files) {
+		CSP::FileNode* root = f.second;
+		//for (auto s : cinfo.ctx_file->node_shortcuts)
+		for (auto s : root->node_shortcuts)
+			if (substr(s.first, '(') == shortname)
+				res.push_back(s.second);
 	}
 
 	return res;
@@ -68,15 +74,15 @@ list<CSP::Node*> CSharpContext::find_by_shortcuts(string shortname)
 
 void CSharpContext::print_shortcuts()
 {
-	cout << " ----- --------- ----- " << endl;
 	cout << " ----- Shortcuts -----" << endl;
-	cout << " ----- --------- ----- " << endl;
 	for (auto f : files) {
 		cout << "File: " << f.second->name << endl;
 		for (auto shortcut : f.second->node_shortcuts) {
 			cout << shortcut.first << endl;
 		}
 	}
+
+	cout << endl;
 }
 
 void CSharpContext::print_visible() {
@@ -154,6 +160,7 @@ void CSharpContext::print_visible() {
 
 void CSharpContext::print() {
 
+	cout << " ----- Print ----- " << endl;
 	for (auto f : files)
 		f.second->print();
 
@@ -162,6 +169,8 @@ void CSharpContext::print() {
 		cout << "Completion type is: " << CSharpParser::completion_type_name(cinfo.completion_type) << endl;
 		cout << "Current expression is: " << cinfo.completion_expression << endl;
 	}
+
+	cout << endl;
 }
 
 void CSharpContext::register_provider(ICSharpProvider* provider)

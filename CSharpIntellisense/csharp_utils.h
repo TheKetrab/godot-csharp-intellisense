@@ -63,4 +63,6 @@ vector<string> split_func(string s);
 string join_vector(const vector<string> &v, const string &joiner);
 vector<string> split(string s, char c);
 
+string read_file(string path);
+
 #endif // CSHARP_UTILS_H

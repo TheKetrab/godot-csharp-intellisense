@@ -1,6 +1,7 @@
 #include "csharp_utils.h"
 #include <string>
-
+#include <fstream>
+#include <sstream>
 string substr(string s, char c) {
 	string res;
 	for (int i = 0; i < s.size() && s[i] != c; i++)
@@ -82,3 +83,16 @@ string join_vector(const vector<string> &v, const string &joiner)
 	return res;
 }
 
+string read_file(string path) {
+
+	ifstream file;
+	file.open(path);
+
+	stringstream str_stream;
+	str_stream << file.rdbuf();
+	string code = str_stream.str();
+
+	file.close();
+
+	return code;
+}
