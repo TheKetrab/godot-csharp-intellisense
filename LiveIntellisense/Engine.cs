@@ -11,8 +11,8 @@ namespace LiveIntellisense
 {
     class Engine
     {
-        private ConsoleColor warningClr = ConsoleColor.Red;
-        private ConsoleColor errorClr = ConsoleColor.DarkMagenta;
+        private ConsoleColor warningClr = ConsoleColor.DarkMagenta;
+        private ConsoleColor errorClr = ConsoleColor.Red;
 
         public string cursorStr = "^|";
 
@@ -25,7 +25,6 @@ namespace LiveIntellisense
         // fullname x text
         private Dictionary<string, string> files;
         private string currentFile;
-
 
         public Engine(string inputDir, int msTimeout, string intellisenseProg)
         {
@@ -63,7 +62,6 @@ namespace LiveIntellisense
 
         private bool CheckForUpdates()
         {
-            int cursorFound = 0;
             bool updated = false;
             foreach (var fi in di.GetFiles())
             {
@@ -74,7 +72,7 @@ namespace LiveIntellisense
                 {
                     updated = true; // added file
                     text = File.ReadAllText(fi.FullName);
-                    files.Add(fi.FullName,text);
+                    files.Add(fi.FullName, text);
                 }
                 else
                 {
@@ -85,6 +83,13 @@ namespace LiveIntellisense
                         files[fi.FullName] = text;
                     }
                 }
+            }
+
+            int cursorFound = 0;
+            foreach (var f in files)
+            {
+                string text = f.Value;
+                string filename = f.Key;
 
                 // contains cursor?
                 if (text.Contains(cursorStr))
@@ -94,21 +99,26 @@ namespace LiveIntellisense
                     {
                         if (cursorFound == 2)
                         {
-                            Printer.Print(string.Format(
-                                "More than one cursor occurance found.\nFirst at: {0}", currentFile), errorClr);
+                            if (updated)
+                            {
+                                Printer.PrepareConsole();
+                                Printer.Print(string.Format(
+                                    "More than one cursor occurance found.\nFirst at: {0}", currentFile), errorClr);
+                            }
                         }
 
-                        Printer.Print(string.Format("> Cursor also found at: {0}", fi.FullName), warningClr);
+                        if (updated)
+                            Printer.Print(string.Format("> Cursor also found at: {0}", filename), warningClr);
                     }
                     else
                     {
-                        currentFile = fi.FullName;
+                        currentFile = filename;
                     }
                 }
 
             }
 
-            if (cursorFound != 1)
+            if (cursorFound >= 2)
                 updated = false;
 
             return updated;
@@ -125,7 +135,7 @@ namespace LiveIntellisense
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = intellisenseProg,
-                    Arguments = "\"" + filePaths + "\"",
+                    Arguments = "-f " + "\"" + filePaths + "\"",
                     UseShellExecute = false,
                     RedirectStandardOutput = true
                 };

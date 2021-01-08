@@ -18,6 +18,7 @@ namespace LiveIntellisense
             {
                 Engine engine = new Engine(inputDir, timeout, intellisenseProg);
                 var thread = new Thread(() => engine.Run());
+                thread.IsBackground = true;
                 thread.Start();
 
                 // Enter to quit the program.
