@@ -117,7 +117,7 @@ int main(int argc, const char* argv[]) {
 
 	if (details) {
 		csc->print(); // structure of filenodes
-		//csc->print_visible();
+		csc->print_visible();
 		csc->print_shortcuts();
 
 		cout << " ----- OPTIONS ----- " << endl;

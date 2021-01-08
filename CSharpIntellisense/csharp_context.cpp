@@ -87,11 +87,10 @@ void CSharpContext::print_shortcuts()
 
 void CSharpContext::print_visible() {
 
-	cout << endl;
-	cout << " ----- --------- ----- " << endl;
-	cout << "  VISIBLE IN CONTEXT (VIS_ALL):" << endl;
-	cout << " ----- --------- ----- " << endl;
-	cout << endl;
+	cout << " ----- Visible in context ----- " << endl;
+
+	int prev_visibility = this->visibility;
+	this->visibility = VIS_IGNORE;
 
 	cout << "LABELS:" << endl;
 	for (auto x : get_visible_labels())
@@ -155,7 +154,8 @@ void CSharpContext::print_visible() {
 
 	}
 
-	cout << "----- ----- ----- ----- ----- -----" << endl;
+
+	this->visibility = prev_visibility;
 }
 
 void CSharpContext::print() {
@@ -441,7 +441,7 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 	int n = splitted.size();
 
 	int prev_visibility = this->visibility;
-	this->visibility = VIS_ALL;
+	this->visibility |= VIS_PPP;
 	this->visibility &= ~VIS_CONSTRUCT;
 	auto nodesAll = get_nodes_by_simplified_expression(func_name);
 	this->visibility = prev_visibility;
@@ -580,7 +580,7 @@ string CSharpContext::simplify_expression(const string expr)
 	auto tokens = lexer.get_tokens();
 
 	int prev_visibility = this->visibility;
-	this->visibility = VIS_ALL;
+	this->visibility |= VIS_PPP;
 
 	int pos = 0;
 	string res = simplify_expr_tokens(tokens, pos);
@@ -1018,7 +1018,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 	ASSURE_CTX(list<CSP::Node*>());
 
 	int prev_visibility = this->visibility;
-	this->visibility = VIS_ALL;
+	this->visibility |= VIS_PPP;
 
 	if (!contains(expr, "new ")) // new + space
 		this->visibility &= ~VIS_CONSTRUCT;

@@ -126,6 +126,7 @@ void CSharpParser::debug_info() const {
 	//cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
 }
 
+
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
 //                               ===========================================================                               //
@@ -133,6 +134,7 @@ void CSharpParser::debug_info() const {
 //                               ===========================================================                               //
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
+
 
 
 
@@ -2770,10 +2772,12 @@ list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars(int visib
 	list<VarNode*> res;
 
 	// all statements in current block are BEFORE cursor
-	for (StatementNode* node : statements) {
+	int n = statements.size();
+	for (int i = n - 1; i >= 0; i--) {
 
+		StatementNode* node = statements[i];
 		// declaration -> add variable to visibles
-		if (node->node_type == Type::DECLARATION)
+		if (node->node_type == Type::DECLARATION && is_unique(res,node))
 			res.push_back(((DeclarationNode*)node)->variable);
 
 	}
@@ -2781,7 +2785,7 @@ list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars(int visib
 	// all visible in parent
 	if (parent != nullptr) {
 		auto visible_vars = parent->get_visible_vars(visibility);
-		MERGE_LISTS(res, visible_vars);
+		MERGE_LISTS_COND(res, visible_vars, IS_UNIQUE(res));
 	}
 
 	return res;
@@ -2919,7 +2923,7 @@ list<CSharpParser::VarNode*> CSharpParser::MethodNode::get_visible_vars(int visi
 	// vars from class
 	if (parent != nullptr) {
 		auto visible_vars = parent->get_visible_vars(visibility);
-		MERGE_LISTS(res, visible_vars);
+		MERGE_LISTS_COND(res, visible_vars, IS_UNIQUE(res));
 	}
 
 	return res;
@@ -2997,7 +3001,10 @@ string CSharpParser::Node::fullname() const
 	if (parent == nullptr || parent->node_type == Type::FILE)
 		return name;
 
-	return parent->fullname() + "." + name;
+	if (IS_TYPE_NODE(parent) || parent->node_type == Type::NAMESPACE)
+		return parent->fullname() + "." + name;
+
+	return name;
 }
 
 string CSharpParser::Node::prettyname() const
@@ -3098,6 +3105,7 @@ list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types(int vi
 	MERGE_LISTS_COND(res, classes, VISIBILITY_COND);
 	MERGE_LISTS_COND(res, interfaces, VISIBILITY_COND);
 
+
 	// derived types
 	for (auto x : base_types) {
 		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
@@ -3149,7 +3157,7 @@ list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars(int visi
 		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
 		if (type_node != nullptr) { // from base class -> no longer private
 			auto visible_from_base = type_node->get_visible_vars(visibility & ~VIS_PRIVATE);
-			MERGE_LISTS(res, visible_from_base);
+			MERGE_LISTS_COND(res, visible_from_base, IS_UNIQUE(res));
 		}
 	}
 

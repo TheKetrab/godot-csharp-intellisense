@@ -24,16 +24,21 @@ using namespace std;
 	for (auto x : lst2) \
 		if cond lst1.push_back(x);
 
+#define IS_UNIQUE(lst1) (is_unique(lst1,x))
+
 #define CHILD_COND (x->name == name || name == "")
 #define NAME_COND (x->name == name)
 
 #define VISIBILITY_COND ( \
-	 (!!(visibility & VIS_STATIC) == x->is_static()) \
-	&& \
-	(((visibility & VIS_PRIVATE) && (x->is_private() || x->is_protected() || x->is_public())) \
-	|| ((visibility & VIS_PROTECTED) && (x->is_protected() || x->is_public())) \
-	|| ((visibility & VIS_PUBLIC) && x->is_public()) \
-	|| ((visibility & VIS_STATIC) && x->is_static())) \
+	(visibility & VIS_IGNORE) \
+	|| \
+	( \
+		(!!(visibility & VIS_STATIC) == x->is_static()) \
+		&& \
+		(((visibility & VIS_PRIVATE) && (x->is_private() || x->is_protected() || x->is_public())) \
+		|| ((visibility & VIS_PROTECTED) && (x->is_protected() || x->is_public())) \
+		|| ((visibility & VIS_PUBLIC) && x->is_public())) \
+	) \
 )
 
 #define FOREACH_DELETE(collection) \
@@ -54,7 +59,7 @@ const int VIS_STATIC       = 1 << 3;  // static
 const int VIS_PPP          = 7;       // public, protected & private
 const int VIS_PP           = 3;       // public & protected
 const int VIS_CONSTRUCT    = 1 << 4;  // constructors
-const int VIS_ALL = VIS_PPP | VIS_STATIC | VIS_CONSTRUCT;
+const int VIS_IGNORE       = 1 << 31; // everything
 
 string substr(string s, char c);
 bool contains(string s, char c);
@@ -64,5 +69,7 @@ string join_vector(const vector<string> &v, const string &joiner);
 vector<string> split(string s, char c);
 
 string read_file(string path);
+
+
 
 #endif // CSHARP_UTILS_H

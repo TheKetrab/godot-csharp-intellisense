@@ -494,6 +494,15 @@ public:
 
 	static string completion_type_name(CompletionType type);
 
+	template <typename T, typename U>
+	static bool is_unique(const list<T*>& lst, const U* node)
+	{
+		for (auto x : lst)
+			if (x->name == node->name)
+				return false;
+
+		return true;
+	}
 
 	// ----- ----- ERRORS & CURSOR ----- ----- //
   public:
