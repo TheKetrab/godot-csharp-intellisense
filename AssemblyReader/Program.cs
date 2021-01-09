@@ -59,6 +59,8 @@ namespace AssemblyReader
                 }
             }
 
+            any = true;
+            invoker = "System.Int32";
             Reader reader = new Reader(assdirs,asspaths)
             {
                 any = any,
@@ -67,7 +69,7 @@ namespace AssemblyReader
             };
 
             reader.Run();
-
+            Console.Read();
         }
     }
 }
