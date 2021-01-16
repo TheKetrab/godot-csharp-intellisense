@@ -13,6 +13,7 @@ namespace AssemblyReader
         public bool any;
         public string member;
         public string invoker;
+        public string findtype;
 
         private const string PRIVATE = "PRIVATE";
         private const string PROTECTED = "PROTECTED";
@@ -66,8 +67,9 @@ namespace AssemblyReader
 
         public void Run()
         {
-
             // ----- Find -----
+            if (!string.IsNullOrEmpty(findtype))
+                invoker = findtype;
 
             Type t = Type.GetType(invoker);
             if (t == null)
@@ -79,6 +81,17 @@ namespace AssemblyReader
                         break;
                 }
 
+            }
+
+            // ----- Findtype mode -----
+            if (!string.IsNullOrEmpty(findtype))
+            {
+                if (t == null)
+                    Console.WriteLine("FALSE");
+                else
+                    Console.WriteLine("TRUE");
+
+                return;
             }
 
             // ----- Print -----
@@ -100,8 +113,11 @@ namespace AssemblyReader
                             PrintType(member as TypeInfo);
 
                 }
+
+                // warning !!! no support for extension methods
             }
         }
+
 
         public void PrintMethod(MethodBase mb)
         {
@@ -130,6 +146,13 @@ namespace AssemblyReader
         {
             Console.Write("VAR" + " ");
             Console.Write(pi.ToString());
+
+            if (pi.GetMethod.IsPublic) Console.Write(" " + PUBLIC);
+            else if (pi.GetMethod.IsFamily) Console.Write(" " + PROTECTED);
+            else if (pi.GetMethod.IsPrivate) Console.Write(" " + PRIVATE);
+
+            if (pi.GetMethod.IsStatic) Console.Write(" " + STATIC);
+
             Console.Write('\n');
         }
 

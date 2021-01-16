@@ -591,7 +591,6 @@ string CSharpContext::simplify_expression(const string expr)
 }
 
 // dedukuje typ jakiegoœ wyra¿enia, korzystaj¹c z informacji, które ma (np o namespaceach i klasie w której rozwa¿amy to wyra¿enie)
-// additionally: remove redundant - dodatkowo usuwa niepotrzebne: np jeœli N1.N2.C1 a jest to u¿ywane w klasie C1 albo s¹ otwarte te namespace'y (klauzul¹ using) to nie dodawaj do typu
 string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> &tokens, int &pos)
 {
 	bool prev_include_constructors = this->include_constructors;
@@ -615,9 +614,13 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 			while (pos < n) {
 				string type = simplify_expr_tokens(tokens, pos);
 				if (type == "") { // end
-					res += ")";
+					// not closed function -> don't map to type, this is simplified expression
+					//res += ")";
 					pos++;
-					break;
+					
+					// restore
+					this->include_constructors = prev_include_constructors;
+					return res;
 				}
 				res += type;
 
@@ -923,6 +926,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 
 	}
 
+
 	return res;
 
 }
@@ -947,9 +951,11 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	// Hence this is simplified expression, there is no ')' token inside.
 	// Posible cases of first token:
 	//   1. this
-	//   2. literal
-	//   3. class-name or namespace-name
-	//   4. variable
+	//   2. base
+	//   3. literal
+	//   4. class-name or namespace-name
+	//   5. variable
+	//   6. (known by provider)
 
 	list<CSP::Node*> res;
 	switch (tokens[0].type) {
@@ -965,7 +971,34 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		break;
 	}
 
-	// --- 2: literal ---
+	// --- 2: base ---
+	case CST::TK_KW_BASE: {
+		
+		CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
+		if (thisClass != nullptr) {
+
+			for (string type_name : thisClass->base_types) {
+
+				auto nodes = get_nodes_by_expression(type_name);
+				for (auto x : nodes) {
+
+					if (x->node_type == CSP::Node::Type::CLASS
+						|| x->node_type == CSP::Node::Type::STRUCT
+						|| x->node_type == CSP::Node::Type::INTERFACE)
+					{
+						visibility &= ~VIS_STATIC;
+						auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
+						MERGE_LISTS(res, nodes);
+					}
+				}
+			}
+		}
+
+		break;
+	}
+
+
+	// --- 3: literal ---
 	case CST::TK_LT_CHAR:
 	case CST::TK_LT_INTEGER:
 	case CST::TK_LT_REAL:
@@ -985,26 +1018,59 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	case CST::TK_IDENTIFIER: {
 
 		list<CSP::Node*> start;
+		int pos = 1;
 
-		// --- 3: visible in shortcuts ---
+		// --- 4: visible in shortcuts ---
 		auto found_by_shortcuts = find_by_shortcuts(tokens[0].data);
 		MERGE_LISTS(start, found_by_shortcuts);
 
-		// --- 4: variable or resolvable identifier
+		// --- 5: variable or resolvable identifier
 		auto found_by_visible = get_visible_in_ctx_by_name(tokens[0].data);
 		MERGE_LISTS(start, found_by_visible);
 
-		// --- 5: find in provider ---
+		// --- 6: find in provider ---
 		if (start.empty()) {
 			if (_provider != nullptr) {
-				auto found_in_provider = _provider->find_class_by_name(tokens[0].data);
+				
+				string class_name = tokens[0].data;
+				auto found_in_provider = _provider->find_class_by_name(class_name);
+
+				if (found_in_provider.empty()) {
+
+					for (pos = 1; pos + 1 < (int)tokens.size(); pos += 2) {
+
+						int X = 2;
+						if (tokens[pos].type == CSharpLexer::Token::TK_PERIOD
+							&& tokens[pos + 1].type == CSharpLexer::Token::TK_IDENTIFIER) {
+							class_name += "." + tokens[pos + 1].data;
+							if (pos + 3 < tokens.size()) {
+								if (tokens[pos + 2].type == CST::TK_BRACKET_OPEN
+									&& tokens[pos + 3].type == CST::TK_BRACKET_CLOSE) {
+									class_name += "[]";
+									X = 4;
+								}
+							}
+							auto fip = _provider->find_class_by_name(class_name);
+							MERGE_LISTS(found_in_provider, fip);
+							if (!fip.empty()) {
+								pos += X;
+								break;
+							}
+						}
+						else {
+							break;
+						}
+
+					}
+				}
+
 				MERGE_LISTS(start, found_in_provider);
 			}
 		}
 
 		// FIND FURTHER
 		for (auto x : start) {
-			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
+			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, pos);
 			MERGE_LISTS(res, nodes);
 		}
 	}
@@ -1198,13 +1264,13 @@ int CSharpContext::get_visibility_by_var(const CSP::VarNode* var_invoker_object,
 	return visibility;
 }
 
-list<CSP::Node*> CSharpContext::get_children_of_base_type(string base_type) const
+list<CSP::Node*> CSharpContext::get_children_of_base_type(string base_type, string child_name) const
 {
 	if (_provider != nullptr) {
 
 		auto node = _provider->resolve_base_type(base_type);
 		if (node != nullptr) {
-			auto res = _provider->get_child_dynamic(node, "");
+			auto res = _provider->get_child_dynamic(node, child_name);
 			return res;
 		}
 

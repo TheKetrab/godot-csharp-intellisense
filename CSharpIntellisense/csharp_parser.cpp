@@ -120,10 +120,10 @@ std::map<CST, CSM> CSharpParser::to_modifier = {
 
 
 void CSharpParser::debug_info() const {
-	if (pos == 1549) {
+	if (pos == 62) {
 		int x = 1;
 	}
-	//cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
+	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
 }
 
 
@@ -813,188 +813,197 @@ string CSharpParser::_parse_expression(bool inside, CST opener) {
 	prev_expression = cur_expression;
 	//string prev_expr = cur_expression;
 	cur_expression = "";
-	bool end = false;
-	while (!end) {
-		debug_info();
-		switch (GETTOKEN(0)) {
 
-		CASEATYPICAL
+	try {
+		bool end = false;
+		while (!end) {
+			debug_info();
+			switch (GETTOKEN(0)) {
 
-		CASEBASETYPE {
-			string type = _parse_type();
-			cur_expression += type;
-			break;
-		}
+				CASEATYPICAL
 
-		case CST::TK_KW_AWAIT:
-		case CST::TK_KW_BASE:
-		case CST::TK_KW_AS:
-		case CST::TK_KW_THIS:
-		case CST::TK_KW_NAMEOF:
-		case CST::TK_KW_NULL: {
-			cur_expression += CSharpLexer::token_names[(int)GETTOKEN(0)];
-			INCPOS(1);
-			break;
-		}
-		case CST::TK_KW_NEW: {
-			
-			// new Int32(1) + 9 <-- this is expression
-			cur_expression += _parse_new();
-			break;
-		}
+					CASEBASETYPE{
+						string type = _parse_type();
+						cur_expression += type;
+						break;
+				}
 
-		case CST::TK_COLON: {
-			INCPOS(1); // ignore (TODO zmienic na ogarnianie operatora ? : )
-			cur_expression += ":";
-			break;
-		}
-
-		// end if
-		case CST::TK_COMMA: {
-			end = true;
-			//if (!inside) end = true;
-			//else { cur_expression += ","; INCPOS(1); }
-			break;
-		}
-		case CST::TK_SEMICOLON: {
-			if (!inside) end = true;
-			else { end = true; }
-			break;
-		}
-		case CST::TK_PARENTHESIS_CLOSE: {
-			if (opener == CST::TK_PARENTHESIS_OPEN) end = true;
-			else { cur_expression += ")"; INCPOS(1); }
-			break;
-		}
-
-		// function invokation
-		case CST::TK_PARENTHESIS_OPEN: {
-			cur_expression += "(";
-			INCPOS(1);
-			while (true) {
-				string e = prev_expression;
-				cur_expression += _parse_expression(true, CST::TK_PARENTHESIS_OPEN); // inside
-				prev_expression = e;
-				if (_is_actual_token(CST::TK_PARENTHESIS_CLOSE)) break;
-				else if (_is_actual_token(CST::TK_COMMA)) { cur_expression += ","; INCPOS(1); }
-				else _unexpeced_token_error();
-			}
-			_assert(CST::TK_PARENTHESIS_CLOSE);
-			cur_expression += ")";
-			INCPOS(1);
-			break;
-		}
-
-		case CST::TK_OP_LAMBDA: {
-			// TODO to jest bardzo slabe rozwiazanie
-			cur_expression += " => ";
-			INCPOS(1);
-			string s = _parse_expression();
-			cur_expression += s;
-			break;
-		}
-
-		CASELITERAL {
-			if (tokens[pos].type == CST::TK_LT_CHAR) {
-				cur_expression += "'" + TOKENDATA(0) + "'";
-			}
-			else if (tokens[pos].type == CST::TK_LT_STRING) {
-				cur_expression += "\"" + TOKENDATA(0) + "\"";
-			}
-			else {
-				cur_expression += TOKENDATA(0);
-			}
-			INCPOS(1);
-			break;
-		}
-
-		case CST::TK_IDENTIFIER: { 
-			
-			// maybe it is a type (MyOwnType)
-			// or array access (MyIdentifier[expression])
-			int cur_pos = pos;
-			string type = _parse_type(true);
-
-			if (type == "") {
-				// this is not a type, neither access to array
-				// it can be eg method invocation -> add to res and decide in next iteration
-				pos = cur_pos;
-				cur_expression += TOKENDATA(0);
-				INCPOS(1);
-				break;
-			}
-			else {
-
-				cur_expression += type;
-				break;
-
-			}
-		}
-		case CST::TK_PERIOD: { cur_expression += "."; INCPOS(1); break; }
-		case CST::TK_BRACKET_OPEN: {
-			cur_expression += "[";
-			INCPOS(1);
-			string e = prev_expression;
-			cur_expression += _parse_expression(true, CST::TK_BRACKET_OPEN); // inside
-			prev_expression = e;
-			_assert(CST::TK_BRACKET_CLOSE);
-			cur_expression += "]";
-			INCPOS(1);
-			break;
-		}
-
-		case CST::TK_BRACKET_CLOSE: {
-			if (opener == CST::TK_BRACKET_OPEN) end = true;
-			//else { cur_expression += ")"; INCPOS(1); }
-			else { end = true; }
-			break;
-		}
-		case CST::TK_CURLY_BRACKET_CLOSE: { // for initialization block: var x = new { a = EXPR };
-			if (opener == CST::TK_CURLY_BRACKET_OPEN) end = true;
-			//else { cur_expression += "}"; INCPOS(1); }
-			else { end = true; }
-			break;
-		}
-		case CST::TK_CURLY_BRACKET_OPEN: {
-			BlockNode* node = _parse_block();
-			cur_expression += "{ ... }";
-			break;
-		}
-
-		default: {
-
-			CSharpLexer::Token t = GETTOKEN(0);
-			if (CSharpLexer::is_operator(t)) {
+			case CST::TK_KW_AWAIT:
+			case CST::TK_KW_BASE:
+			case CST::TK_KW_AS:
+			case CST::TK_KW_THIS:
+			case CST::TK_KW_NAMEOF:
+			case CST::TK_KW_NULL: {
 				cur_expression += CSharpLexer::token_names[(int)GETTOKEN(0)];
 				INCPOS(1);
+				break;
+			}
+			case CST::TK_KW_NEW: {
 
-				//if (CSharpLexer::is_assignment_operator(t)) {
-				//	string expr = parse_expression();
-				//}
-
+				// new Int32(1) + 9 <-- this is expression
+				cur_expression += _parse_new();
+				break;
 			}
 
-			else if (this->kw_value_allowed && t == CST::TK_KW_VALUE) {
-				cur_expression += "value";
+			case CST::TK_COLON: {
+				INCPOS(1); // ignore (TODO zmienic na ogarnianie operatora ? : )
+				cur_expression += ":";
+				break;
+			}
+
+								// end if
+			case CST::TK_COMMA: {
+				end = true;
+				//if (!inside) end = true;
+				//else { cur_expression += ","; INCPOS(1); }
+				break;
+			}
+			case CST::TK_SEMICOLON: {
+				if (!inside) end = true;
+				else { end = true; }
+				break;
+			}
+			case CST::TK_PARENTHESIS_CLOSE: {
+				if (opener == CST::TK_PARENTHESIS_OPEN) end = true;
+				else { cur_expression += ")"; INCPOS(1); }
+				break;
+			}
+
+											// function invokation
+			case CST::TK_PARENTHESIS_OPEN: {
+				cur_expression += "(";
+				INCPOS(1);
+				while (true) {
+					string e = prev_expression;
+					cur_expression += _parse_expression(true, CST::TK_PARENTHESIS_OPEN); // inside
+					prev_expression = e;
+					if (_is_actual_token(CST::TK_PARENTHESIS_CLOSE)) break;
+					else if (_is_actual_token(CST::TK_COMMA)) { cur_expression += ","; INCPOS(1); }
+					else _unexpeced_token_error();
+				}
+				_assert(CST::TK_PARENTHESIS_CLOSE);
+				cur_expression += ")";
 				INCPOS(1);
 				break;
 			}
 
-			else if (CSharpLexer::is_context_keyword(t)) {
+			case CST::TK_OP_LAMBDA: {
+				// TODO to jest bardzo slabe rozwiazanie
+				cur_expression += " => ";
+				INCPOS(1);
+				string s = _parse_expression();
+				cur_expression += s;
+				break;
+			}
 
-				cur_expression += CSharpLexer::token_names[(int)t];
+			CASELITERAL{
+				if (tokens[pos].type == CST::TK_LT_CHAR) {
+					cur_expression += "'" + TOKENDATA(0) + "'";
+				}
+				else if (tokens[pos].type == CST::TK_LT_STRING) {
+					cur_expression += "\"" + TOKENDATA(0) + "\"";
+				}
+				else {
+					cur_expression += TOKENDATA(0);
+				}
 				INCPOS(1);
 				break;
 			}
 
-			else {
-				_unexpeced_token_error();
+			case CST::TK_IDENTIFIER: {
+
+				// maybe it is a type (MyOwnType)
+				// or array access (MyIdentifier[expression])
+				int cur_pos = pos;
+				string type = _parse_type(true);
+
+				if (type == "") {
+					// this is not a type, neither access to array
+					// it can be eg method invocation -> add to res and decide in next iteration
+					pos = cur_pos;
+					cur_expression += TOKENDATA(0);
+					INCPOS(1);
+					break;
+				}
+				else {
+
+					cur_expression += type;
+					break;
+
+				}
+			}
+			case CST::TK_PERIOD: { cur_expression += "."; INCPOS(1); break; }
+			case CST::TK_BRACKET_OPEN: {
+				cur_expression += "[";
+				INCPOS(1);
+				string e = prev_expression;
+				cur_expression += _parse_expression(true, CST::TK_BRACKET_OPEN); // inside
+				prev_expression = e;
+				_assert(CST::TK_BRACKET_CLOSE);
+				cur_expression += "]";
+				INCPOS(1);
+				break;
+			}
+
+			case CST::TK_BRACKET_CLOSE: {
+				if (opener == CST::TK_BRACKET_OPEN) end = true;
+				//else { cur_expression += ")"; INCPOS(1); }
+				else { end = true; }
+				break;
+			}
+			case CST::TK_CURLY_BRACKET_CLOSE: { // for initialization block: var x = new { a = EXPR };
+				if (opener == CST::TK_CURLY_BRACKET_OPEN) end = true;
+				//else { cur_expression += "}"; INCPOS(1); }
+				else { end = true; }
+				break;
+			}
+			case CST::TK_CURLY_BRACKET_OPEN: {
+				BlockNode* node = _parse_block();
+				cur_expression += "{ ... }";
+				break;
+			}
+
+			default: {
+
+				CSharpLexer::Token t = GETTOKEN(0);
+				if (CSharpLexer::is_operator(t)) {
+					cur_expression += CSharpLexer::token_names[(int)GETTOKEN(0)];
+					INCPOS(1);
+
+					if (CSharpLexer::is_assignment_operator(t)) {
+						string expr = _parse_expression();
+						cur_expression += expr;
+					}
+
+				}
+
+				else if (this->kw_value_allowed && t == CST::TK_KW_VALUE) {
+					cur_expression += "value";
+					INCPOS(1);
+					break;
+				}
+
+				else if (CSharpLexer::is_context_keyword(t)) {
+
+					cur_expression += CSharpLexer::token_names[(int)t];
+					INCPOS(1);
+					break;
+				}
+
+				else {
+					_unexpeced_token_error();
+				}
+			}
+
+
 			}
 		}
 
-
-		}
-
+	}
+	catch (CSharpParserException&) {
+		//_escape();
+		//delete variable;
+		//variable = nullptr;
 	}
 
 	string res = cur_expression;
@@ -1304,7 +1313,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			cur_type += "[";
 			INCPOS(1);
 			if (array_constructor) {
-				string expr = _parse_expression();
+				string expr = _parse_expression(true,CSharpLexer::Token::TK_BRACKET_OPEN);
 				cur_type += expr;
 			}
 			break;
@@ -1933,7 +1942,7 @@ CSharpParser::ConditionNode* CSharpParser::_parse_if_statement() {
 		INCPOS(1); // skip '('
 		node->raw += "(";
 
-		string expression = _parse_expression();
+		string expression = _parse_expression(true,CSharpLexer::Token::TK_PARENTHESIS_OPEN);
 		node->raw += expression;
 
 		_assert(CST::TK_PARENTHESIS_CLOSE);
@@ -1998,7 +2007,7 @@ CSharpParser::TryNode* CSharpParser::_parse_try_statement()
 
 			INCPOS(1); // skip 'catch'
 			_assert(CST::TK_PARENTHESIS_OPEN); INCPOS(1); // skip '('		
-			_parse_expression(); // ignore
+			_parse_expression(true,CST::TK_PARENTHESIS_OPEN); // ignore
 			_assert(CST::TK_PARENTHESIS_CLOSE); INCPOS(1); // skip ')'
 
 			// possible when
@@ -2006,7 +2015,7 @@ CSharpParser::TryNode* CSharpParser::_parse_try_statement()
 
 				INCPOS(1); // skip 'when'
 				_assert(CST::TK_PARENTHESIS_OPEN); INCPOS(1); // skip '('
-				_parse_expression(); // ignore
+				_parse_expression(true,CST::TK_PARENTHESIS_OPEN); // ignore
 				_assert(CST::TK_PARENTHESIS_CLOSE); INCPOS(1); // skip ')'
 			}
 
@@ -2217,9 +2226,14 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 			}
 
 			CASEBASETYPE{
+
 				VarNode *variable = _parse_declaration();
 				DeclarationNode* node = new DeclarationNode(td);
+
+				// binding
 				node->variable = variable;
+				if (variable != nullptr)
+					variable->parent = node;
 				
 				if (_is_actual_token(CST::TK_SEMICOLON)) {
 					// finished normally
@@ -2235,6 +2249,8 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 				return node;
 			}
 
+		case CST::TK_KW_TRUE:
+		case CST::TK_KW_FALSE:
 		case CST::TK_KW_THIS:
 		case CST::TK_KW_BASE: {
 
@@ -2503,7 +2519,7 @@ string CSharpParser::_parse_method_invocation() {
 			INCPOS(1);
 		}
 		else {
-			cur_expression += _parse_expression();
+			cur_expression += _parse_expression(true, CST::TK_PARENTHESIS_OPEN);
 		}
 
 	}
@@ -2631,6 +2647,14 @@ bool CSharpParser::is_base_type(string type) {
 // cast (rzutowanie) - explicite
 bool CSharpParser::coercion_possible(string from, string to)
 {
+	// remove '[]' TODO: bardzo lagodna koercja, wszystko mozna 'na tablice przekonwertowac'
+	from = remove_array_type(from);
+	to = remove_array_type(to);
+
+	// if not base type try to convert to base type (System.String -> string)
+	csc->to_base_type(from);
+	csc->to_base_type(to);
+
 	if (from == to)
 		return true;
 
@@ -2683,6 +2707,17 @@ bool CSharpParser::coercion_possible(string from, string to)
 		return true;
 
 	return false;
+}
+
+string CSharpParser::remove_array_type(string array_type)
+{
+	int n = array_type.length();
+	if (n < 2) return array_type;
+	
+	if (array_type[n - 1] == ']' && array_type[n - 2] == '[')
+		array_type = array_type.substr(0, n - 2);
+
+	return array_type;
 }
 
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
@@ -2791,33 +2826,6 @@ list<CSharpParser::VarNode*> CSharpParser::BlockNode::get_visible_vars(int visib
 	return res;
 }
 
-// czy w tym wêŸle widaæ ca³y prefix?
-bool CSharpParser::Node::is_visible(const vector<string>& redundant_prefix)
-{
-	FileNode* file_node = get_parent_file();
-
-	if (file_node == nullptr)
-		return false;
-
-	string joined = join_vector(redundant_prefix, ".");
-	file_node->using_directives;
-	file_node->using_static_direcvites;
-
-	// jedŸ rownoczesnie po drzewie i wektorze i szukaj
-	int n = redundant_prefix.size();
-	Node* temp = file_node;
-
-	for (int i = 0; i < n; i++) {
-
-		// TODO
-		//Node* child = temp->get_child(redundant_prefix[i]);
-		//if (child == nullptr) return false;
-		//else temp = child;
-	}
-
-	return true;
-}
-
 list<CSharpParser::TypeNode*> CSharpParser::NamespaceNode::get_visible_types(int visibility) const
 {
 	list<TypeNode*> res;
@@ -2891,7 +2899,7 @@ list<CSP::Node*> CSharpParser::VarNode::get_members(const string name, int visib
 		return list<CSP::Node*>(); // TODO: is_base_type -> get members for base types
 
 	if (is_base_type(return_type))
-		return csc->get_children_of_base_type(return_type);
+		return csc->get_children_of_base_type(return_type,name);
 
 	// else -> cast to TypeNode and get members
 	auto nodes = csc->get_nodes_by_expression(return_type);
@@ -3295,8 +3303,10 @@ string CSharpParser::MethodNode::prettyname() const
 	for (int i = 0; i < n; i++) {
 		if (i == cur_arg) res += "|>";
 		res += arguments[i]->type;
-		res += " ";
-		res += arguments[i]->name;
+		if (!arguments[i]->name.empty()) {
+			res += " ";
+			res += arguments[i]->name;
+		}
 		if (i == cur_arg) res += "<|";
 
 		if (i < n - 1)

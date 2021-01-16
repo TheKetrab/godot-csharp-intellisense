@@ -27,6 +27,8 @@ public:
 	virtual list<CSP::TypeNode*> find_class_by_name(string name) const = 0;
 	virtual CSP::TypeNode* resolve_base_type(string base_type) const = 0;
 	virtual list<CSP::Node*> get_child_dynamic(void* invoker, string name) const = 0; // invoker to wskaznik na node po stronie providera
+
+	virtual bool to_base_type(string &t) const = 0;
 };
 
 class CSharpContext {
@@ -102,7 +104,6 @@ public:
 	string simplify_expr_tokens(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 
 	// mapowanie uproszczonych wyra¿eñ na wêz³y
-	void skip_redundant_prefix(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
 	list<CSP::Node*> get_nodes_by_simplified_expression(const vector<CSharpLexer::TokenData> &tokens); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
 	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
@@ -116,27 +117,17 @@ public:
 	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object, int visibility);
 	int get_visibility_by_var(const CSP::VarNode* var_invoker_object, int visibility);
 
-	list<CSP::Node*> get_children_of_base_type(string base_type) const;
+	list<CSP::Node*> get_children_of_base_type(string base_type, string child_name) const;
+
+	bool to_base_type(string &t) {
+		
+		if (_provider != nullptr)
+			if (_provider->to_base_type(t))
+				return true;
+
+		return false;
+	}
 };
 
-
-
-/*
-// contract for node provider
-class ICSharpNode {
-
-public:
-	virtual int get_node_type() const = 0; // 0 - NONE, 1 - TYPE, 2 - METHOD, 3 - PROP, 4 - VAR
-	virtual string fullname() const = 0;
-	virtual string prettyname() const = 0;
-	virtual list<ICSharpNode*> get_members(const string name, int visibility) const = 0;
-
-	virtual string get_type() const = 0; // return type
-	virtual bool is_public() const = 0;
-	virtual bool is_protected() const = 0;
-	virtual bool is_private() const = 0;
-	virtual bool is_static() const = 0;
-};
-*/
 
 #endif // CSHARP_CONTEXT_H

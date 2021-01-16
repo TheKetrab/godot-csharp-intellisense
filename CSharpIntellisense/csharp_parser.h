@@ -30,6 +30,7 @@ struct CSharpParserException : public exception {
 	}
 };
 
+
 class CSharpParser {
 
   public:
@@ -104,7 +105,6 @@ class CSharpParser {
 		virtual ~Node();
 
 		FileNode* get_parent_file();
-		bool is_visible(const vector<string> &redundant_prefix);
 
 		virtual void print(int indent = 0) const = 0;
 		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY(int,Namespace1.ClassY)
@@ -488,8 +488,10 @@ public:
 	static map<CSharpLexer::Token, Modifier> to_modifier;
 	static bool is_base_type(string type);
 	static bool coercion_possible(string from, string to);
+	static string remove_array_type(string array_type);
 
 	friend class CSharpContext;
+
 
 
 	static string completion_type_name(CompletionType type);

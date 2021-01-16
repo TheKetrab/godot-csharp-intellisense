@@ -712,7 +712,9 @@ bool CSharpLexer::_read_special_char(Token& type) {
 
 
 
-
+void CSharpLexer::_make_token(const Token p_type) {
+	_make_token(p_type, token_names[(int)p_type]);
+}
 
 void CSharpLexer::_make_token(const Token p_type, const string& data) {
 	TokenData td = { p_type, data, line, column };
@@ -870,6 +872,7 @@ string CSharpLexer::TokenData::to_string(bool typed) const
 	if (typed) {
 
 		switch (type) {
+
 		case CST::TK_LT_INTEGER: {
 			bool is_unsigned = (contains(data, 'u') || contains(data, 'U')) ? true : false;
 			bool is_long = (contains(data, 'l') || contains(data, 'L')) ? true : false;
@@ -882,15 +885,21 @@ string CSharpLexer::TokenData::to_string(bool typed) const
 
 			return res;
 		}
+
 		case CST::TK_LT_REAL: {
 			if (contains(data, 'f') || contains(data, 'F')) return "float";
 			if (contains(data, 'm') || contains(data, 'M')) return "decimal";
 
 			return "double";
 		}
+
 		case CST::TK_LT_CHAR:         return "char";
+
 		case CST::TK_LT_STRING:
 		case CST::TK_LT_INTERPOLATED: return "string";
+
+		case CST::TK_KW_TRUE:
+		case CST::TK_KW_FALSE:        return "bool";
 		}
 	}
 

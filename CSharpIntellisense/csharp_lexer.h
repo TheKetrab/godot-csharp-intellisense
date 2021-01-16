@@ -126,7 +126,8 @@ public:
 
 private:
 	void _tokenize();
-	void _make_token(const Token p_type, const string &data = "");
+	void _make_token(const Token p_type);
+	void _make_token(const Token p_type, const string &data);
 	void _make_identifier(const string &identifier);
 
 	void _skip_whitespace();

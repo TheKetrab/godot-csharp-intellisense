@@ -20,6 +20,8 @@ namespace LiveIntellisense
         private int msTimeout;
         private string intellisenseProg;
 
+
+        private string currentLocation;
         private DirectoryInfo di;
 
         // fullname x text
@@ -39,6 +41,10 @@ namespace LiveIntellisense
             this.inputDir = inputDir;
             this.msTimeout = msTimeout;
             this.intellisenseProg = intellisenseProg;
+
+            currentLocation = System.IO.Path.GetDirectoryName(
+                System.Reflection.Assembly.GetExecutingAssembly().Location);
+
 
             files = new Dictionary<string, string>();
             di = new DirectoryInfo(inputDir);
@@ -131,11 +137,13 @@ namespace LiveIntellisense
 
             using (Process process = new Process())
             {
-                
+                string arguments = "";
+                arguments += "-f " + "\"" + filePaths + "\"";
+                arguments += " -provider " + currentLocation + "\\AssemblyReader.exe";
                 process.StartInfo = new ProcessStartInfo
                 {
                     FileName = intellisenseProg,
-                    Arguments = "-f " + "\"" + filePaths + "\"",
+                    Arguments = arguments,
                     UseShellExecute = false,
                     RedirectStandardOutput = true
                 };
