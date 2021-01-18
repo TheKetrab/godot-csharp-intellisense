@@ -15,11 +15,21 @@ namespace AssemblyReader
         public string invoker;
         public string findtype;
 
+
+        #region ConstIdentifiers
+        private const string TYPE = "TYPE";
+        private const string VAR = "VAR";
+        private const string METHOD = "METHOD";
+        private const string BASETYPES = "BASETYPES";
+
         private const string PRIVATE = "PRIVATE";
         private const string PROTECTED = "PROTECTED";
         private const string PUBLIC = "PUBLIC";
         private const string STATIC = "STATIC";
 
+        private const string FALSE = "FALSE";
+        private const string TRUE = "TRUE";
+        #endregion
 
         public List<Assembly> assemblies = new List<Assembly>();
 
@@ -46,6 +56,7 @@ namespace AssemblyReader
                     LoadAssembly(new FileInfo(file));
 
             }
+
         }
 
         private bool LoadAssembly(FileInfo fi)
@@ -83,37 +94,91 @@ namespace AssemblyReader
 
             }
 
-            // ----- Findtype mode -----
+            // ----- Found? -----
             if (!string.IsNullOrEmpty(findtype))
             {
                 if (t == null)
-                    Console.WriteLine("FALSE");
-                else
-                    Console.WriteLine("TRUE");
+                {
+                    Console.WriteLine(FALSE);
+                    return;
+                }
 
-                return;
+                else
+                    Console.WriteLine(TRUE);
+
             }
 
-            // ----- Print -----
+            // ----- Print (all necessery info about this type to reconstruct it) -----
 
             if (t != null)
             {
-                var members = any ? t.GetMembers() : t.GetMember(member);
-                foreach (var member in members)
-                {
-                    if ((member.MemberType & MemberTypes.Field) > 0)
-                        PrintField(member as FieldInfo);
-                    else if ((member.MemberType & MemberTypes.Property) > 0)
-                        PrintProperty(member as PropertyInfo);
-                    else if ((member.MemberType & MemberTypes.Method) > 0
-                        || (member.MemberType & MemberTypes.Constructor) > 0)
-                            PrintMethod(member as MethodBase);
-                    else if ((member.MemberType & MemberTypes.TypeInfo) > 0
-                        || (member.MemberType & MemberTypes.NestedType) > 0)
-                            PrintType(member as TypeInfo);
+                if (!string.IsNullOrEmpty(findtype))
+                    PrintBaseTypes(t);
 
+                bool showAny = any;
+                if (any == false && !string.IsNullOrEmpty(findtype)) showAny = true;
+
+                // ----- FIELDS -----
+                var fields = new List<FieldInfo>();
+                if (showAny)
+                {
+                    fields = t.GetFields().ToList();
+                }
+                else
+                {
+                    var f = t.GetField(member);
+                    if (f != null) fields.Add(f);
                 }
 
+                foreach (var f in fields)
+                    PrintField(f);
+
+                // ----- PROPERTIES -----
+                var properties = new List<PropertyInfo>();
+                if (showAny)
+                {
+                    properties = t.GetProperties().ToList();
+                }
+                else
+                {
+                    var p = t.GetProperty(member);
+                    if (p != null) properties.Add(p);
+                }
+
+                foreach (var p in properties)
+                    PrintProperty(p);
+
+                // ----- METHODS & CONSTRUCTORS -----
+                var methods = new List<MethodBase>();
+                if (showAny)
+                {
+                    foreach (var mi in t.GetMethods())
+                        methods.Add(mi);
+                    foreach (var ci in t.GetConstructors())
+                        methods.Add(ci);
+                }
+                else
+                {
+                    var mi = t.GetMethod(member);
+                    if (mi != null) methods.Add(mi);
+
+                    // TODO get constructors
+                }
+
+                foreach (var m in methods)
+                    PrintMethod(m);
+
+                // TODO add nested types 
+                //else if ((member.MemberType & MemberTypes.TypeInfo) > 0
+                //    || (member.MemberType & MemberTypes.NestedType) > 0)
+                //PrintType(member as TypeInfo);
+
+            
+            
+            
+            
+            
+            
                 // warning !!! no support for extension methods
             }
         }
@@ -121,7 +186,11 @@ namespace AssemblyReader
 
         public void PrintMethod(MethodBase mb)
         {
-            Console.Write("METHOD" + " ");
+            // default constructor method (System.Object) - hide it
+            if (mb.Name.Equals(".ctor"))
+                return;
+
+            Console.Write(METHOD + " ");
 
             Console.Write(mb.ToString());
 
@@ -137,7 +206,7 @@ namespace AssemblyReader
 
         public void PrintType(TypeInfo ti)
         {
-            Console.Write("TYPE" + " ");
+            Console.Write(TYPE + " ");
             Console.Write(ti.ToString());
             Console.Write('\n');
         }
@@ -158,7 +227,7 @@ namespace AssemblyReader
 
         public void PrintField(FieldInfo fi)
         {
-            Console.Write("VAR" + " ");
+            Console.Write(VAR + " ");
 
             Console.Write(fi.ToString());
 
@@ -167,6 +236,28 @@ namespace AssemblyReader
             else if (fi.IsPrivate) Console.Write(" " + PRIVATE);
 
             if (fi.IsStatic) Console.Write(" " + STATIC);
+
+            Console.Write('\n');
+        }
+
+        public void PrintBaseTypes(Type t)
+        {
+            Console.Write(BASETYPES + " ");
+            
+            if (t.BaseType == null)
+            {
+                Console.Write('\n');
+                return; // no base type -> this is System.Object
+            }
+
+            Console.Write(t.BaseType.FullName);
+
+            foreach (var intf in t.GetInterfaces())
+            {
+                if (intf.Name.Contains("`"))
+                    continue;
+                Console.Write(" " + intf.FullName);
+            }
 
             Console.Write('\n');
         }

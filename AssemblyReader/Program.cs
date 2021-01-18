@@ -17,7 +17,7 @@ namespace AssemblyReader
         // -member [membername]  - concrete member of invoker
         // -any                - all members of invoker
         //
-        // -findtype [name]    - TRUE if found, else FALSE
+        // -findtype [typename] - reconstruct type
         //
         // output
         // TYPE result MODIFIERS
@@ -47,12 +47,12 @@ namespace AssemblyReader
                 }
                 else if (args[i].Equals("-invoker"))
                 {
-                    if (i+1 < args.Length)
+                    if (i + 1 < args.Length)
                         invoker = args[++i];
                 }
                 else if (args[i].Equals("-member"))
                 {
-                    if (i+1 < args.Length)
+                    if (i + 1 < args.Length)
                         member = args[++i];
                 }
                 else if (args[i].Equals("-any"))
@@ -75,12 +75,14 @@ namespace AssemblyReader
             //any = true;
             //member = "GetExecutingAssembly";
 
+            //findtype = "System.String";
+
             Reader reader = new Reader(assdirs,asspaths)
             {
                 any = any,
                 member = member,
                 invoker = invoker,
-                findtype = findtype
+                findtype = findtype,
             };
 
             reader.Run();

@@ -51,6 +51,28 @@ using namespace std;
 	|| (node->node_type == CSP::Node::Type::INTERFACE)
 
 
+
+#define CASEBASETYPE \
+		case CSharpLexer::Token::TK_KW_BOOL: \
+		case CSharpLexer::Token::TK_KW_BYTE: \
+		case CSharpLexer::Token::TK_KW_CHAR: \
+		case CSharpLexer::Token::TK_KW_DECIMAL: \
+		case CSharpLexer::Token::TK_KW_DOUBLE: \
+		case CSharpLexer::Token::TK_KW_DYNAMIC: \
+		case CSharpLexer::Token::TK_KW_FLOAT: \
+		case CSharpLexer::Token::TK_KW_INT: \
+		case CSharpLexer::Token::TK_KW_LONG: \
+		case CSharpLexer::Token::TK_KW_OBJECT: \
+		case CSharpLexer::Token::TK_KW_SBYTE: \
+		case CSharpLexer::Token::TK_KW_SHORT: \
+		case CSharpLexer::Token::TK_KW_STRING: \
+		case CSharpLexer::Token::TK_KW_UINT: \
+		case CSharpLexer::Token::TK_KW_ULONG: \
+		case CSharpLexer::Token::TK_KW_USHORT: \
+		case CSharpLexer::Token::TK_KW_VAR: \
+		case CSharpLexer::Token::TK_KW_VOID:
+
+
 const int VIS_NONE         = 0;
 const int VIS_PUBLIC       = 1;       // public
 const int VIS_PROTECTED    = 1 << 1;  // protected

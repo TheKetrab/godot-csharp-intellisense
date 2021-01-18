@@ -89,9 +89,6 @@ class CSharpParser {
 			DECLARATION, BLOCK
 		} node_type;
 
-		bool created_by_provider = false; // dynamically created, not all data is known! ask provider about more data
-		void* provider_data; // jakies info, ktore bedzie potrzebne providerowi do dynamicznego pobrania info
-
 		CSharpLexer::TokenData creator;
 		Node* parent = nullptr;
 

@@ -43,25 +43,6 @@ void CSharpParser::_found_cursor() {
 	case CST::TK_EMPTY:  error("Empty token error."); \
 	case CST::TK_CURSOR: _found_cursor(); INCPOS(1); break;
 
-#define CASEBASETYPE \
-		case CST::TK_KW_BOOL: \
-		case CST::TK_KW_BYTE: \
-		case CST::TK_KW_CHAR: \
-		case CST::TK_KW_DECIMAL: \
-		case CST::TK_KW_DOUBLE: \
-		case CST::TK_KW_DYNAMIC: \
-		case CST::TK_KW_FLOAT: \
-		case CST::TK_KW_INT: \
-		case CST::TK_KW_LONG: \
-		case CST::TK_KW_OBJECT: \
-		case CST::TK_KW_SBYTE: \
-		case CST::TK_KW_SHORT: \
-		case CST::TK_KW_STRING: \
-		case CST::TK_KW_UINT: \
-		case CST::TK_KW_ULONG: \
-		case CST::TK_KW_USHORT: \
-		case CST::TK_KW_VAR: \
-		case CST::TK_KW_VOID:
 
 #define CASEMODIFIER \
 		case CST::TK_KW_PUBLIC: \
@@ -649,6 +630,9 @@ CSharpParser::ClassNode* CSharpParser::_parse_class() {
 		if (_is_actual_token(CST::TK_COLON)) {
 			node->base_types = _parse_derived_and_implements(node->is_generic);
 		}
+
+		if (node->base_types.empty()) // object is last on class chain
+			node->base_types.push_back("object");
 
 		// constraints
 		if (_is_actual_token(CST::TK_KW_WHERE)) {
@@ -1826,6 +1810,9 @@ CSharpParser::InterfaceNode* CSharpParser::_parse_interface() {
 			node->base_types = _parse_derived_and_implements(node->is_generic);
 		}
 
+		if (node->base_types.empty()) // object is last on class chain
+			node->base_types.push_back("object");
+
 		// constraints
 		if (_is_actual_token(CST::TK_KW_WHERE)) {
 			node->constraints = _parse_constraints();
@@ -2225,7 +2212,16 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 				return node;
 			}
 
-			CASEBASETYPE{
+		CASEBASETYPE {
+
+			// static method from type, eg: int.TryParse("123",x);
+			if (GETTOKEN(1) == CST::TK_PERIOD) {
+				string expr = _parse_expression();
+				StatementNode* n = new StatementNode(td);
+				n->raw = expr;
+				return n;
+			}
+			else { // declaration, eg: int x = 123;
 
 				VarNode *variable = _parse_declaration();
 				DeclarationNode* node = new DeclarationNode(td);
@@ -2234,7 +2230,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 				node->variable = variable;
 				if (variable != nullptr)
 					variable->parent = node;
-				
+
 				if (_is_actual_token(CST::TK_SEMICOLON)) {
 					// finished normally
 					INCPOS(1); // skip ';'
@@ -2248,6 +2244,7 @@ CSharpParser::StatementNode* CSharpParser::_parse_statement() {
 
 				return node;
 			}
+		}
 
 		case CST::TK_KW_TRUE:
 		case CST::TK_KW_FALSE:
@@ -2965,8 +2962,8 @@ list<CSharpParser::Node*> CSharpParser::InterfaceNode::get_members(const string 
 	list<Node*> res;
 
 	// everything is 'public'
-	MERGE_LISTS(res, methods);
 	MERGE_LISTS(res, properties);
+	MERGE_LISTS(res, methods);
 
 	return res;
 }
@@ -3112,8 +3109,7 @@ list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types(int vi
 	MERGE_LISTS_COND(res, structures, VISIBILITY_COND);
 	MERGE_LISTS_COND(res, classes, VISIBILITY_COND);
 	MERGE_LISTS_COND(res, interfaces, VISIBILITY_COND);
-
-
+	
 	// derived types
 	for (auto x : base_types) {
 		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
@@ -3124,9 +3120,11 @@ list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types(int vi
 	}
 
 	// nested types (eg. class defined inside class)
-	if (parent != nullptr && IS_TYPE_NODE(parent)) {
-		auto outside_types = parent->get_visible_types(visibility);
-		MERGE_LISTS(res, outside_types);
+	if (parent != nullptr) {
+		if (IS_TYPE_NODE(parent)) {
+			auto outside_types = parent->get_visible_types(visibility);
+			MERGE_LISTS(res, outside_types);
+		}
 	}
 
 	return res;
@@ -3180,9 +3178,9 @@ list<CSharpParser::Node*> CSharpParser::StructNode::get_members(const string nam
 	auto visible_methods = get_visible_methods(visibility);
 	auto visible_types = get_visible_types(visibility);
 
+	MERGE_LISTS_COND(res, visible_types, CHILD_COND);
 	MERGE_LISTS_COND(res, visible_vars, CHILD_COND);
 	MERGE_LISTS_COND(res, visible_methods, CHILD_COND);
-	MERGE_LISTS_COND(res, visible_types, CHILD_COND);
 
 	return res;
 }

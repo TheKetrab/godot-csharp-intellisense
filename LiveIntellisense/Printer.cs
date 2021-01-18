@@ -92,9 +92,10 @@ namespace LiveIntellisense
             Print(cls, typeColor);
         }
 
-        public static void PrepareConsole()
+        public static void PrepareConsole(string msg)
         {
             Console.Clear();
+            Console.WriteLine(" > {0} < ", msg);
             Console.WriteLine("----- ----- -----");
         }
 

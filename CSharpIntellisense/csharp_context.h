@@ -24,11 +24,10 @@ class ICSharpProvider {
 public:
 	vector<string> using_directives;
 
-	virtual list<CSP::TypeNode*> find_class_by_name(string name) const = 0;
-	virtual CSP::TypeNode* resolve_base_type(string base_type) const = 0;
-	virtual list<CSP::Node*> get_child_dynamic(void* invoker, string name) const = 0; // invoker to wskaznik na node po stronie providera
+	virtual list<CSP::TypeNode*> find_class_by_name(string name) = 0;
+	virtual CSP::TypeNode* resolve_base_type(string base_type) = 0;
 
-	virtual bool to_base_type(string &t) const = 0;
+	virtual bool to_base_type(string &t) = 0;
 };
 
 class CSharpContext {

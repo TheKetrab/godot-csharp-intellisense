@@ -612,17 +612,19 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 
 			// parse arguments' types
 			while (pos < n) {
+				
 				string type = simplify_expr_tokens(tokens, pos);
-				if (type == "") { // end
-					// not closed function -> don't map to type, this is simplified expression
-					//res += ")";
-					pos++;
-					
+				
+				// EOF detected, not closed function, don't map to type, this is a simplified expression
+				if (type == "") { 					
 					// restore
 					this->include_constructors = prev_include_constructors;
 					return res;
 				}
-				res += type;
+
+				// uda³o siê sparsowaæ jakiœ argument
+				if (type != ")" && type != ",")
+					res += type;
 
 				// inner parenthesis close
 				if (tokens[pos].type == CST::TK_PARENTHESIS_CLOSE) {
@@ -649,11 +651,17 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 		// outer parenthesis close
 		else if (tokens[pos].type == CST::TK_PARENTHESIS_CLOSE) {
 			end = true;
+			if (res.empty()) {
+				res = ")"; // konwencja - zwracamy taki znak, jesli koniec argumentu przez nawias zamykajacy
+			}
 		}
 
 		// outer comma
 		else if (tokens[pos].type == CST::TK_COMMA) {
 			end = true;
+			if (res.empty()) {
+				res = ","; // konwencja - zwracamy taki znak, jesli koniec argumentu przez przecinek
+			}
 		}
 
 		// keyword new
@@ -670,7 +678,8 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 		}
 	}
 
-	res = map_to_type(res);
+	if (res != ")" && res != ",")
+		res = map_to_type(res);
 
 	//restore
 	this->include_constructors = prev_include_constructors;
@@ -834,38 +843,19 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 	if (tokens[pos].type == CST::TK_PERIOD
 		&& tokens[pos + 1].type == CST::TK_IDENTIFIER)
 	{
-		if (invoker->created_by_provider) {
+		string child_name = tokens[pos + 1].data;
+		auto children = invoker->get_members(child_name, visibility);
+		for (auto x : children) {
 
-			// dynamically create nodes
-			string child_name = tokens[pos + 1].data;
-			if (_provider != nullptr) {
+			if (!(IS_TYPE_NODE(x))) // no longer static
+				visibility &= ~VIS_STATIC;
+			else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
+				visibility = csc->get_visibility_by_var((CSP::VarNode*)x, visibility);
 
-				auto children = _provider->get_child_dynamic(invoker->provider_data, child_name);
-				for (auto x : children) {
-
-					// TODO visibility
-					auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
-					MERGE_LISTS(res, res_results);
-				}
-			}
-
+			auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
+			MERGE_LISTS(res, res_results);
 		}
-
-		else {
-
-			string child_name = tokens[pos + 1].data;
-			auto children = invoker->get_members(child_name, visibility);
-			for (auto x : children) {
-
-				if (!(IS_TYPE_NODE(x))) // no longer static
-					visibility &= ~VIS_STATIC;
-				else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
-					visibility = csc->get_visibility_by_var((CSP::VarNode*)x, visibility);
-
-				auto res_results = get_nodes_by_simplified_expression_rec(x, tokens, pos + 2);
-				MERGE_LISTS(res, res_results);
-			}
-		}
+		
 	}
 
 	// --- 2: only '.' -> all children ---
@@ -873,29 +863,15 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 		&& tokens[pos+1].type == CST::TK_EOF)
 	{
 
-		if (invoker->created_by_provider) {
-
-			if (_provider != nullptr) {
-
-				// TODO visibility
-				auto children = _provider->get_child_dynamic(invoker->provider_data, "");
-				MERGE_LISTS(res, children);
-
-			}
-
+		if (IS_TYPE_NODE(invoker)) {
+			visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker, visibility);
 		}
 
-		else {
+		// "" means any child -> see SCAN_AND_ADD macro
+		auto children = invoker->get_members("", visibility);
+		MERGE_LISTS(res, children);
 
-			if (IS_TYPE_NODE(invoker)) {
-				visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker, visibility);
-			}
-
-			// "" means any child -> see SCAN_AND_ADD macro
-			auto children = invoker->get_members("", visibility);
-			MERGE_LISTS(res, children);
-
-		}
+		
 	}
 
 	// --- 3: '(' not closed function -> resolve args and match ---
@@ -957,6 +933,10 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	//   5. variable
 	//   6. (known by provider)
 
+
+	int prev_visibility = this->visibility;
+
+
 	list<CSP::Node*> res;
 	switch (tokens[0].type) {
 
@@ -998,7 +978,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	}
 
 
-	// --- 3: literal ---
+	// --- 3: literal -> object ---
 	case CST::TK_LT_CHAR:
 	case CST::TK_LT_INTEGER:
 	case CST::TK_LT_REAL:
@@ -1008,6 +988,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		if (_provider != nullptr) {
 			string type = tokens[0].to_string(true);
 			CSP::TypeNode* tn = _provider->resolve_base_type(type);
+			visibility &= ~VIS_STATIC; // non static
 			auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, 1);
 			MERGE_LISTS(res, nodes);
 		}
@@ -1015,6 +996,21 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		break;
 	}
 
+	// --- 4: base type -> static ---
+	CASEBASETYPE
+	{
+		if (_provider != nullptr) {
+			string type = tokens[0].to_string(true);
+			CSP::TypeNode* tn = _provider->resolve_base_type(type);
+			visibility |= VIS_STATIC; // static
+			auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, 1);
+			MERGE_LISTS(res, nodes);
+		}
+
+		break;
+	}
+
+	// ----- ----- ----- ----- -----
 	case CST::TK_IDENTIFIER: {
 
 		list<CSP::Node*> start;
@@ -1070,12 +1066,24 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 
 		// FIND FURTHER
 		for (auto x : start) {
+
+			visibility = prev_visibility;
+			if (IS_TYPE_NODE(x)) {
+				visibility |= VIS_STATIC;
+			}
+			else {
+				visibility &= ~VIS_STATIC;
+			}
+
 			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, pos);
 			MERGE_LISTS(res, nodes);
 		}
 	}
 	}
 	
+	// restore
+	this->visibility = prev_visibility;
+
 	return res;
 }
 
@@ -1229,6 +1237,14 @@ CSP::TypeNode* CSharpContext::get_type_by_expression(string expr)
 		if (IS_TYPE_NODE(x))
 			return (CSP::TypeNode*)x;
 
+	if (CSharpParser::is_base_type(expr)) {
+		if (_provider != nullptr) {
+
+			return _provider->resolve_base_type(expr);
+
+		}
+	}
+
 	return nullptr;
 }
 
@@ -1270,7 +1286,7 @@ list<CSP::Node*> CSharpContext::get_children_of_base_type(string base_type, stri
 
 		auto node = _provider->resolve_base_type(base_type);
 		if (node != nullptr) {
-			auto res = _provider->get_child_dynamic(node, child_name);
+			auto res = node->get_members(child_name, visibility);
 			return res;
 		}
 

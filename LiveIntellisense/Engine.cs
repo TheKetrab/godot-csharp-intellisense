@@ -58,7 +58,7 @@ namespace LiveIntellisense
 
                 if (updated)
                 {
-                    Printer.PrepareConsole();
+                    Printer.PrepareConsole("Running");
                     DoIntelliSense();
                 }
 
@@ -107,7 +107,7 @@ namespace LiveIntellisense
                         {
                             if (updated)
                             {
-                                Printer.PrepareConsole();
+                                Printer.PrepareConsole("Error");
                                 Printer.Print(string.Format(
                                     "More than one cursor occurance found.\nFirst at: {0}", currentFile), errorClr);
                             }
@@ -153,7 +153,9 @@ namespace LiveIntellisense
                 StreamReader reader = process.StandardOutput;
                 string output = reader.ReadToEnd();
 
+                Printer.PrepareConsole("Done");
                 Printer.PrintIntellisenseOutput(output);
+                Console.SetCursorPosition(0, 0);
 
                 process.WaitForExit();
             }
