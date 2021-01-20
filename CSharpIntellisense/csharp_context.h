@@ -97,8 +97,8 @@ public:
 	// np: N1.C1.DoSth("abc",42).x -> B.x, przy za³o¿eniu, ¿e DoSth zwraca B
 
 	// uproszczanie
-	string map_to_type(string type_expr, bool ret_wldc = false);
-	string map_function_to_type(string func_def, bool ret_wldc = false);
+	string map_to_type(string type_expr, bool ret_wldc = true);
+	string map_function_to_type(string func_def, bool ret_wldc = true);
 	string simplify_expression(const string expr);
 	string simplify_expr_tokens(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 

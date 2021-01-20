@@ -55,10 +55,29 @@ vector<string> split(string s, char c) {
 vector<string> split_func(string s) {
 	vector<string> res;
 	string word;
+
+	bool array_type_mode = false;
 	for (int i = 0; s[i] != '\0'; i++)
 	{
-		if (s[i] == '(' || s[i] == ',' || s[i] == ')' || s[i] == ' ') {
+		if (s[i] == '(' || s[i] == ')' || s[i] == ' ') {
 			if (!word.empty()) {
+				res.push_back(word);
+				word.clear();
+			}
+		}
+		else if (s[i] == '[') {
+			array_type_mode = true;
+			word += s[i];
+		}
+		else if (s[i] == ']') {
+			array_type_mode = false;
+			word += s[i];
+		}
+		else if (s[i] == ',') {
+			if (array_type_mode) {
+				word += s[i];
+			}
+			else if (!word.empty()) {
 				res.push_back(word);
 				word.clear();
 			}
