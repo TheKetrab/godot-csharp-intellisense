@@ -2644,11 +2644,14 @@ bool CSharpParser::is_base_type(string type) {
 // cast (rzutowanie) - explicite
 bool CSharpParser::coercion_possible(string from, string to)
 {
-	// remove '[]' TODO: bardzo lagodna koercja, wszystko mozna 'na tablice przekonwertowac'
-	from = remove_array_type(from);
-	to = remove_array_type(to);
+	// type 'from' must be a subtype of 'to' and array count must be the same
+	int from_array_cnt = remove_array_type(from);
+	int to_array_cnt = remove_array_type(to);
 
-	// if not base type try to convert to base type (System.String -> string)
+	if (from_array_cnt != to_array_cnt)
+		return false;
+
+	// try to convert to base type (System.String -> string)
 	csc->to_base_type(from);
 	csc->to_base_type(to);
 
@@ -2706,15 +2709,25 @@ bool CSharpParser::coercion_possible(string from, string to)
 	return false;
 }
 
-string CSharpParser::remove_array_type(string array_type)
+// usuwa tablicowosc z typu i zwraca ilu elementowa ta tablica byla
+int CSharpParser::remove_array_type(string& array_type)
 {
 	int n = array_type.length();
-	if (n < 2) return array_type;
-	
-	if (array_type[n - 1] == ']' && array_type[n - 2] == '[')
-		array_type = array_type.substr(0, n - 2);
+	if (n < 2) return 0;
 
-	return array_type;
+	int count = 0;
+	if (array_type[n - 1] == ']') {
+
+		for (int i = n - 2; i >= 0; i--) {
+			count++;
+			if (array_type[i] == '[') {
+				array_type = array_type.substr(0, i);
+				break;
+			}
+		}
+	}
+
+	return count;
 }
 
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
