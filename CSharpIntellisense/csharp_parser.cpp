@@ -3,6 +3,7 @@
 #include "csharp_utils.h"
 
 #include <iostream>
+#include <string>
 
 using CST = CSharpLexer::Token;
 using CSM = CSharpParser::Modifier;
@@ -18,7 +19,6 @@ CSharpParser* active_parser; // TODO !!! wyrzucic to brzydkie rozwi¹zanie - albo
 
 
 const string CSharpParser::wldc = "?"; // Wild Cart Type
-
 
 void CSharpParser::_found_cursor() {
 	cinfo.ctx_cursor = current;
@@ -1144,6 +1144,8 @@ CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 		default: _unexpeced_token_error();
 		}
 
+		node->node_type = CSP::Node::Type::LOOP;
+
 		INCPOS(1); // skip keyword
 
 		// ----- ----- -----
@@ -1161,6 +1163,7 @@ CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 				_skip_until_token(CST::TK_SEMICOLON); // assignment or sth else
 			}
 			else {
+				variable->parent = node;
 				node->local_variable = variable;
 			}
 
@@ -1187,13 +1190,16 @@ CSharpParser::LoopNode* CSharpParser::_parse_loop() {
 				_skip_until_token(CST::TK_KW_IN);
 			}
 			else {
+				variable->parent = node;
 				node->local_variable = variable;
 			}
 
 			_assert(CST::TK_KW_IN);
 			INCPOS(1); // skip 'in'
 
-			_parse_expression();
+			string collection = _parse_expression(true,CST::TK_PARENTHESIS_OPEN);
+			if (node->local_variable != nullptr)
+				node->local_variable->value = collection;
 
 			_assert(CST::TK_PARENTHESIS_CLOSE);
 			INCPOS(1); // skip ')'
@@ -2963,6 +2969,7 @@ list<CSP::Node*> CSharpParser::VarNode::get_members(const string name, int visib
 	}
 
 	visibility &= ~VIS_STATIC; // no longer static!
+	visibility |= VIS_NONSTATIC;
 	visibility = csc->get_visibility_by_invoker_type(type_of_var, visibility);
 
 	return type_of_var->get_members(name, visibility);
@@ -3281,7 +3288,7 @@ void CSharpParser::VarNode::print(int indent) const
 
 string CSharpParser::VarNode::get_type() const
 {
-	// deduce var type
+	// deduce var type and remember it!
 	if (type == "var") {
 
 		if (value.empty())
@@ -3291,8 +3298,49 @@ string CSharpParser::VarNode::get_type() const
 		if (ctx == nullptr)
 			return wldc;
 
-		string t = csc->simplify_expression(value);
-		return t;
+		string val = value;
+		bool from_collection = false;
+		if (parent != nullptr) { // expression from collection when 'var' comes from 'foreach'
+			if (parent->node_type == Node::Type::LOOP) {
+				LoopNode* lp = (LoopNode*)parent;
+				if (lp != nullptr) {
+					if (lp->loop_type == LoopNode::Type::FOREACH)
+						from_collection = true;
+				}
+			}
+		}
+
+		auto nodes = csc->get_nodes_by_expression(val);
+		if (nodes.empty())
+			return wldc;
+
+		Node* resolved_value = nodes.front();
+
+		// ----- TODO for future: -----
+		// collection types...? get type from collection
+		// for now -> ONLY arrays are collections
+
+		if (IS_TYPE_NODE(resolved_value)) {
+			string new_type = ((TypeNode*)resolved_value)->name;
+			
+			if (from_collection) // for now -> if it comes from the collection, it must be an array!
+				remove_array_type(new_type);
+
+			type = new_type; // remember resolved type
+			return type;
+		}
+		else if (resolved_value->node_type == Type::VAR || resolved_value->node_type == Type::PROPERTY) {
+			string new_type = ((VarNode*)resolved_value)->get_type();
+
+			if (from_collection) // for now -> if it comes from the collection, it must be an array!
+				remove_array_type(new_type);
+
+			type = new_type; // remember resolved type
+			return type;
+		}
+		
+		// else failed
+		return CSP::wldc;
 	}
 	
 	// base type
@@ -3458,6 +3506,25 @@ int CSharpParser::TypeNode::rank() const
 vector<string> CSharpParser::TypeNode::get_base_types() const
 {
 	vector<string> res = base_types;
-	if (rank() > 0) res.push_back("System.Array");
+	if (rank() > 0) {
+		res.push_back("System.Array");
+	}
+	return res;
+}
+
+list<CSP::VarNode*> CSharpParser::LoopNode::get_visible_vars(int visibility) const
+{
+	list<VarNode*> res;
+
+	if (local_variable != nullptr) {
+		res.push_back(local_variable);
+	}
+
+	// all visible in parent
+	if (parent != nullptr) {
+		auto visible_vars = parent->get_visible_vars(visibility);
+		MERGE_LISTS_COND(res, visible_vars, IS_UNIQUE(res));
+	}
+
 	return res;
 }

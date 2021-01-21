@@ -86,7 +86,7 @@ const int VIS_IGNORE       = 1 << 31; // everything
 
 string substr(string s, char c);
 bool contains(string s, char c);
-bool contains(string s, string substr);
+bool contains(string s, string substr, int offset = -1);
 vector<string> split_func(string s);
 string join_vector(const vector<string> &v, const string &joiner);
 vector<string> split(string s, char c);

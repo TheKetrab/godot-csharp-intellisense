@@ -463,6 +463,9 @@ string CSharpContext::map_array_to_type(string array_expr, bool ret_wldc)
 				int x_rank = CSP::remove_array_type(x_type);
 				if (x_rank == rank) return x_type;
 			}
+			else if (IS_TYPE_NODE(x)) { // constructor
+				return array_expr; // this is a type
+			}
 		}
 	}
 
@@ -696,7 +699,7 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 		}
 
 		// accessing from the array - don't care what is inside, just skip it but count ','
-		if (tokens[pos].type == CST::TK_BRACKET_OPEN) {
+		else if (tokens[pos].type == CST::TK_BRACKET_OPEN) {
 			res += "[";
 			pos++;
 			int depth = 1;
@@ -932,8 +935,10 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 		auto children = invoker->get_members(child_name, visibility);
 		for (auto x : children) {
 
-			if (!(IS_TYPE_NODE(x))) // no longer static
+			if (!(IS_TYPE_NODE(x))) { // no longer static
 				visibility &= ~VIS_STATIC;
+				visibility |= VIS_NONSTATIC;
+			}
 			else if (x->node_type == CSP::Node::Type::VAR) // set visibility (can become even public!)
 				visibility = csc->get_visibility_by_var((CSP::VarNode*)x, visibility);
 
@@ -950,6 +955,9 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 
 		if (IS_TYPE_NODE(invoker)) {
 			visibility = get_visibility_by_invoker_type((CSP::TypeNode*)invoker, visibility);
+		}
+		else {
+
 		}
 
 		// "" means any child -> see SCAN_AND_ADD macro
@@ -992,6 +1000,24 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 
 }
 
+
+void CSharpContext::scan_tokens_array_type(const vector<CSharpLexer::TokenData>& tokens, string& type, int& pos) {
+
+	// scans: [,,,,,]
+	// returns new pos behind the ']'
+
+	if (tokens[pos].type == CST::TK_BRACKET_OPEN) {
+		type += "[";
+		for (pos = 2; tokens[pos].type != CST::TK_EOF; pos++) {
+			if (tokens[pos].type == CST::TK_COMMA) type += ",";
+			else if (tokens[pos].type == CST::TK_BRACKET_CLOSE) { type += "]"; pos++; break; }
+			else { type = ""; break; } // failed
+		}
+	}
+	
+}
+
+
 list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr) {
 
 	ASSURE_CTX(list<CSP::Node*>());
@@ -1017,6 +1043,8 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	//   4. class-name or namespace-name
 	//   5. variable
 	//   6. (known by provider)
+	//  
+	//   Note: optional array type! eg: int[] or X[,,] or System.Int32[,]
 
 
 	int prev_visibility = this->visibility;
@@ -1080,8 +1108,13 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	{
 		if (_provider != nullptr) {
 			string type = tokens[0].to_string(true);
+
+			int pos = 1;
+			scan_tokens_array_type(tokens, type, pos);
+
 			CSP::TypeNode* tn = _provider->resolve_base_type(type);
-			auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, 1);
+			if (tn == nullptr) return res;
+			auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, pos);
 			MERGE_LISTS(res, nodes);
 		}
 
@@ -1093,6 +1126,11 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 
 		list<CSP::Node*> start;
 		int pos = 1;
+
+		// if '[' is there, it must be a type!
+		string type = tokens[0].to_string(true);
+		scan_tokens_array_type(tokens, type, pos);
+		int rank = CSP::remove_array_type(type);
 
 		// --- 4: visible in shortcuts ---
 		auto found_by_shortcuts = find_by_shortcuts(tokens[0].data);
@@ -1113,7 +1151,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 
 					for (pos = 1; pos + 1 < (int)tokens.size(); pos += 2) {
 
-						int X = 2;
+						int X = 2; // TODO: to dzia³a aktualnie tylko dla tablic jednowymiarowych!
 						if (tokens[pos].type == CSharpLexer::Token::TK_PERIOD
 							&& tokens[pos + 1].type == CSharpLexer::Token::TK_IDENTIFIER) {
 							class_name += "." + tokens[pos + 1].data;
@@ -1142,20 +1180,47 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 			}
 		}
 
-		// FIND FURTHER
-		for (auto x : start) {
 
-			visibility = prev_visibility;
-			// NOTE: visibility powinno byc ustalone wczesniej!
-			/*if (IS_TYPE_NODE(x)) {
-				visibility |= VIS_STATIC;
+		// IS IT ARRAY TYPE?
+		if (rank > 0) {
+
+			for (auto x : start) {
+				if (IS_TYPE_NODE(x)) {
+					CSP::TypeNode* new_array_type = new CSP::ClassNode();
+					string new_name = x->name;
+					CSP::add_array_type(new_name, rank);
+					new_array_type->name = new_name;
+					res.push_back(x);
+				}
 			}
-			else {
-				visibility &= ~VIS_STATIC;
-			}*/
 
-			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, pos);
-			MERGE_LISTS(res, nodes);
+		}
+		else { // THIS IS NOT ARRAY TYPE -> find further
+
+			// FIND FURTHER
+			for (auto x : start) {
+
+				int pv = visibility;
+
+				if ((visibility & VIS_STATIC) > 0 && (visibility & VIS_STATIC) > 0) {
+					// decide - static or non static? - it means it wasn't simplified yet
+					if (IS_TYPE_NODE(x)) {
+						// static
+						visibility &= ~VIS_NONSTATIC;
+						visibility |= VIS_STATIC;
+					}
+					else {
+						// non static
+						visibility &= ~VIS_STATIC;
+						visibility |= VIS_NONSTATIC;
+					}
+				}
+
+				auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, pos);
+				MERGE_LISTS(res, nodes);
+
+				visibility = pv;
+			}
 		}
 	}
 	}
@@ -1171,14 +1236,17 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 	ASSURE_CTX(list<CSP::Node*>());
 
 	int prev_visibility = this->visibility;
+	this->visibility = 0;
 	this->visibility |= VIS_PPP;
-	this->visibility |= VIS_STATIC; // begin with static context
+	this->visibility |= VIS_STATIC;
+	this->visibility |= VIS_NONSTATIC;
+	this->visibility |= VIS_CONSTRUCT;
 
 	if (!contains(expr, "new ")) // new + space
 		this->visibility &= ~VIS_CONSTRUCT;
 	else
 		expr = expr.substr(4, expr.length() - 4);
-
+	
 	// jeœli wyra¿enie nie jest proste, to trzeba je uproœciæ
 	// nie proste = jakieœ wywo³anie funkcji lub jakieœ tablice
 	if (contains(expr, ')') || contains(expr,']')) {
@@ -1360,7 +1428,9 @@ int CSharpContext::get_visibility_by_var(const CSP::VarNode* var_invoker_object,
 
 	CSP::TypeNode* type_of_var = (CSP::TypeNode*)nodes.front();
 
-	visibility &= ~VIS_STATIC; // assure to disable static (because on object)
+	// assure to disable static (because on object)
+	visibility &= ~VIS_STATIC;
+	visibility |= VIS_NONSTATIC;
 	visibility = csc->get_visibility_by_invoker_type(type_of_var, visibility);
 
 	return visibility;

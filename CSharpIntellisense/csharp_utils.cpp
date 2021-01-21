@@ -16,11 +16,17 @@ bool contains(string s, char c) {
 	return false;
 }
 
-bool contains(string s, string substr)
+bool contains(string s, string substr, int offset)
 {
+	// offset != -1 means force found to be on special pos
 	auto found = s.find(substr);
-	if (found != string::npos)
-		return true;
+	if (found != string::npos) {
+
+		if (offset == -1)
+			return true;
+		else if (found == offset)
+			return true;
+	}
 
 	return false;
 }

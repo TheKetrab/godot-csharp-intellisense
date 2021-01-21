@@ -119,6 +119,9 @@ public:
 
 	list<CSP::Node*> get_children_of_base_type(string base_type, string child_name) const;
 
+	static void scan_tokens_array_type(const vector<CSharpLexer::TokenData>& tokens, string& type, int& pos);
+
+
 	bool to_base_type(string &t) {
 		
 		if (_provider != nullptr)

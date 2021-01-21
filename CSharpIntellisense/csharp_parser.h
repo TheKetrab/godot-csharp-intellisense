@@ -86,7 +86,7 @@ class CSharpParser {
 		enum class Type {
 			UNKNOWN, FILE, NAMESPACE, ENUM, INTERFACE,
 			STRUCT, CLASS, METHOD, PROPERTY, VAR, STATEMENT, LAMBDA,
-			DECLARATION, BLOCK
+			DECLARATION, BLOCK, LOOP
 		} node_type;
 
 		CSharpLexer::TokenData creator;
@@ -276,7 +276,7 @@ class CSharpParser {
 
 	struct VarNode : public Node {
 
-		string type;
+		mutable string type; // NOTE: type can be changed while resolving 'var' type from the value
 		string value; // or bound expression
 
 		void print(int indent = 0) const override;
@@ -350,6 +350,8 @@ class CSharpParser {
 		LoopNode(TD td) : StatementNode(td) {}
 		virtual ~LoopNode() {}
 		LoopNode::Type loop_type = Type::UNKNOWN;
+		
+		virtual list<VarNode*> get_visible_vars(int visibility) const override;
 		VarNode* local_variable = nullptr;
 		StatementNode* body = nullptr;
 	};
