@@ -1,0 +1,1 @@
+[![Video presentation CSharpIntellisense in Godot](https://img.youtube.com/vi/lCOguKziu1Y/0.jpg)](https://www.youtube.com/watch?v=lCOguKziu1Y)
