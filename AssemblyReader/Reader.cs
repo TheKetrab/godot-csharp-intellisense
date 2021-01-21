@@ -190,6 +190,14 @@ namespace AssemblyReader
             if (mb.Name.Equals(".ctor"))
                 return;
 
+            // convention: set_, get_, op_ -> special metadata method - hide it
+            if (mb.Name.StartsWith("get_")
+             || mb.Name.StartsWith("set_")
+             || mb.Name.StartsWith("op_"))
+                return;
+
+
+
             Console.Write(METHOD + " ");
 
             Console.Write(mb.ToString());
