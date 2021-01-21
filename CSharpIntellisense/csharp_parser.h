@@ -193,8 +193,9 @@ class CSharpParser {
 
 	// abstract
 	struct TypeNode : public GenericNode {
-
+		int rank() const; // typy tablicowe maja rank(wymiar) >= 1
 		vector<string> base_types; // base class and interfaces
+		vector<string> get_base_types() const;
 		TypeNode() {}
 		TypeNode(Type t, TD td) : GenericNode(t, td) {}
 		virtual ~TypeNode() {}
@@ -486,6 +487,8 @@ public:
 	static bool is_base_type(string type);
 	static bool coercion_possible(string from, string to);
 	static int remove_array_type(string& array_type);
+	static void add_array_type(string& type, int rank);
+	static int compute_rank(const string& type);
 
 	friend class CSharpContext;
 

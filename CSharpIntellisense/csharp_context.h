@@ -99,6 +99,7 @@ public:
 	// uproszczanie
 	string map_to_type(string type_expr, bool ret_wldc = true);
 	string map_function_to_type(string func_def, bool ret_wldc = true);
+	string map_array_to_type(string array_expr, bool ret_wldc = true);
 	string simplify_expression(const string expr);
 	string simplify_expr_tokens(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 

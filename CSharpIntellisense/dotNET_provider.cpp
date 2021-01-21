@@ -119,6 +119,8 @@ list<CSP::TypeNode*> DotNETProvider::find_class_by_name(string name)
 
 CSP::TypeNode* DotNETProvider::resolve_base_type(string base_type)
 {
+	int rank = CSP::remove_array_type(base_type);
+
 	string name = "";
 	for (auto x : base_types_map) {
 		if (x.first == base_type)
@@ -127,6 +129,10 @@ CSP::TypeNode* DotNETProvider::resolve_base_type(string base_type)
 
 	if (name.empty())
 		return nullptr;
+
+	if (rank > 0) {
+		CSP::add_array_type(name, rank);
+	}
 
 	auto nodes = find_class_by_name(name);
 	return nodes.front();

@@ -1259,6 +1259,16 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 	while (!end) {
 		debug_info();
 
+		if (array_mode) {
+			if (!_is_actual_token(CST::TK_BRACKET_CLOSE)
+				&& !_is_actual_token(CST::TK_COMMA))
+			{
+				end = true;
+				cur_type = "";
+				break;
+			}
+		}
+
 		switch (GETTOKEN(0)) {
 
 		CASEATYPICAL
@@ -1296,7 +1306,7 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			array_mode = true;
 			cur_type += "[";
 			INCPOS(1);
-			if (array_constructor) {
+			if (array_constructor) { // eg: new int[5]
 				string expr = _parse_expression(true,CSharpLexer::Token::TK_BRACKET_OPEN);
 				cur_type += expr;
 			}
@@ -1320,6 +1330,10 @@ std::string CSharpParser::_parse_type(bool array_constructor) {
 			else if (array_mode) {
 				cur_type += ",";
 				INCPOS(1);
+				if (array_constructor) { // eg: new int[5,6,7]
+					string expr = _parse_expression(true, CSharpLexer::Token::TK_BRACKET_OPEN);
+					cur_type += expr;
+				}
 			}
 			else {
 				_unexpeced_token_error();
@@ -2622,6 +2636,8 @@ void CSharpParser::_skip_until_next_line() {
 
 bool CSharpParser::is_base_type(string type) {
 
+	remove_array_type(type);
+
 	string base_type[] = {
 		"bool", "byte",
 		"char", "string",
@@ -2709,25 +2725,46 @@ bool CSharpParser::coercion_possible(string from, string to)
 	return false;
 }
 
+int CSharpParser::compute_rank(const string& type) {
+
+	int n = type.size();
+	if (n < 2) return 0;
+
+	int rank = 0;
+	if (type[n - 1] == ']') {
+		for (int i = n - 2; i >= 0; i--) {
+			rank++;
+			if (type[i] == '[')
+				break;
+		}
+	}
+
+	return rank;
+}
+
 // usuwa tablicowosc z typu i zwraca ilu elementowa ta tablica byla
 int CSharpParser::remove_array_type(string& array_type)
 {
 	int n = array_type.length();
 	if (n < 2) return 0;
 
-	int count = 0;
-	if (array_type[n - 1] == ']') {
+	int rank = compute_rank(array_type);
+	if (rank > 0)
+		array_type = array_type.substr(0, n-rank-1);
 
-		for (int i = n - 2; i >= 0; i--) {
-			count++;
-			if (array_type[i] == '[') {
-				array_type = array_type.substr(0, i);
-				break;
-			}
-		}
-	}
+	return rank;
+}
 
-	return count;
+void CSharpParser::add_array_type(string & type, int rank)
+{
+	if (rank <= 0) return;
+
+	type += "[";
+	for (int i = 1; i < rank; i++)
+		type += ",";
+
+	type += "]";
+
 }
 
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
@@ -2912,12 +2949,18 @@ list<CSP::Node*> CSharpParser::VarNode::get_members(const string name, int visib
 		return csc->get_children_of_base_type(return_type,name);
 
 	// else -> cast to TypeNode and get members
+	int rank = CSP::remove_array_type(return_type);
 	auto nodes = csc->get_nodes_by_expression(return_type);
 
 	if (nodes.size() == 0)
 		return list<CSP::Node*>();
 
 	CSP::TypeNode* type_of_var = (CSP::TypeNode*)nodes.front();
+	if (rank > 0) {
+		string x = type_of_var->name;
+		add_array_type(x, rank);
+		type_of_var->name = x;
+	}
 
 	visibility &= ~VIS_STATIC; // no longer static!
 	visibility = csc->get_visibility_by_invoker_type(type_of_var, visibility);
@@ -2964,7 +3007,7 @@ void CSharpParser::InterfaceNode::print(int indent) const
 	cout << "INTERFACE " << name << endl;
 
 	// HEADERS:
-	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
+	if (get_base_types().size() > 0)     print_header(indent + TAB, get_base_types(), "> base types:");
 	if (methods.size() > 0)		   print_header(indent + TAB, methods, "> methods:");
 	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
 
@@ -3066,7 +3109,7 @@ void CSharpParser::ClassNode::print(int indent) const {
 	cout << "CLASS " << name << ":" << endl;
 
 	// HEADERS:
-	if (base_types.size() > 0)  print_header(indent + TAB, base_types, "> base types:");
+	if (get_base_types().size() > 0)  print_header(indent + TAB, get_base_types(), "> base types:");
 	if (interfaces.size() > 0)	print_header(indent + TAB, interfaces, "> interfaces:");
 	if (classes.size() > 0)		print_header(indent + TAB, classes, "> classes:");
 	if (structures.size() > 0)	print_header(indent + TAB, structures, "> structures:");
@@ -3099,7 +3142,7 @@ void CSharpParser::StructNode::print(int indent) const {
 	cout << "STRUCT " << name << ":" << endl;
 
 	// HEADERS:
-	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
+	if (get_base_types().size() > 0)     print_header(indent + TAB, get_base_types(), "> base types:");
 	if (interfaces.size() > 0)	   print_header(indent + TAB, interfaces, "> interfaces:");
 	if (classes.size() > 0)		   print_header(indent + TAB, classes, "> classes:");
 	if (structures.size() > 0)	   print_header(indent + TAB, structures, "> structures:");
@@ -3124,7 +3167,7 @@ list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types(int vi
 	MERGE_LISTS_COND(res, interfaces, VISIBILITY_COND);
 	
 	// derived types
-	for (auto x : base_types) {
+	for (auto x : get_base_types()) {
 		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
 		if (type_node != nullptr) { // from base class -> no longer private
 			auto visible_from_base = type_node->get_visible_types(visibility & ~VIS_PRIVATE);
@@ -3152,7 +3195,7 @@ list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods(in
 		((!!(visibility & VIS_CONSTRUCT) == x->is_constructor()) && VISIBILITY_COND));
 
 	// derived methods
-	for (auto x : base_types) {
+	for (auto x : get_base_types()) {
 		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
 		if (type_node != nullptr) { // from base class -> no longer private
 			auto visible_from_base = type_node->get_visible_methods(visibility & ~VIS_PRIVATE);
@@ -3172,7 +3215,7 @@ list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars(int visi
 	MERGE_LISTS_COND(res, properties, VISIBILITY_COND);
 
 	// derived types
-	for (auto x : base_types) {
+	for (auto x : get_base_types()) {
 		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
 		if (type_node != nullptr) { // from base class -> no longer private
 			auto visible_from_base = type_node->get_visible_vars(visibility & ~VIS_PRIVATE);
@@ -3405,4 +3448,16 @@ void CSharpParser::FileNode::print(int indent) const
 string CSharpParser::FileNode::fullname() const
 {
 	return ""; // empty
+}
+
+int CSharpParser::TypeNode::rank() const
+{
+	return compute_rank(this->name);
+}
+
+vector<string> CSharpParser::TypeNode::get_base_types() const
+{
+	vector<string> res = base_types;
+	if (rank() > 0) res.push_back("System.Array");
+	return res;
 }

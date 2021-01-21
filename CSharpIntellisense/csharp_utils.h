@@ -33,7 +33,7 @@ using namespace std;
 	(visibility & VIS_IGNORE) \
 	|| \
 	( \
-		(!!(visibility & VIS_STATIC) == x->is_static()) \
+		((!!(visibility & VIS_STATIC) == x->is_static()) || (!!(visibility & VIS_NONSTATIC == !x->is_static()))) \
 		&& \
 		(((visibility & VIS_PRIVATE) && (x->is_private() || x->is_protected() || x->is_public())) \
 		|| ((visibility & VIS_PROTECTED) && (x->is_protected() || x->is_public())) \
@@ -78,9 +78,10 @@ const int VIS_PUBLIC       = 1;       // public
 const int VIS_PROTECTED    = 1 << 1;  // protected
 const int VIS_PRIVATE      = 1 << 2;  // private
 const int VIS_STATIC       = 1 << 3;  // static
+const int VIS_NONSTATIC    = 1 << 4;  // non-static
 const int VIS_PPP          = 7;       // public, protected & private
 const int VIS_PP           = 3;       // public & protected
-const int VIS_CONSTRUCT    = 1 << 4;  // constructors
+const int VIS_CONSTRUCT    = 1 << 5;  // constructors
 const int VIS_IGNORE       = 1 << 31; // everything
 
 string substr(string s, char c);

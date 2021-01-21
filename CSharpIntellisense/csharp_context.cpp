@@ -368,9 +368,12 @@ string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 
 	// is function?
 	if (contains(expr, '(')) {
-
 		return map_function_to_type(expr,ret_wldc);
+	}
 
+	// is array?
+	if (contains(expr, '[')) {
+		return map_array_to_type(expr, ret_wldc);
 	}
 
 	// found in shortcuts?
@@ -431,6 +434,46 @@ string CSharpContext::map_to_type(string expr, bool ret_wldc) {
 	// not found -> return wildcart "?"
 	if (ret_wldc) return CSharpParser::wldc;
 	else return expr;
+}
+
+// na wejœciu dostaje N1.C1.X[,,,,] -> zwraca to jakiego typu jest X (to X, które pasuje to tego wymiaru)
+string CSharpContext::map_array_to_type(string array_expr, bool ret_wldc)
+{
+	string expr = array_expr;
+
+	// convention:
+	// last '[]' is application
+	//
+	// x[] -> x is variable of some type of rank 1 and is applied to []
+	// x[,,] -> x is variable of some type of rank 3 and is applied to [,,]
+	// x[][] -> x[] is type and is a applied to []
+	// x[,,][,,] -> x[,,] is type and is applied to [,,]
+
+	int rank = CSP::remove_array_type(expr);
+
+	// 1. array_expr is a variable
+	if (!contains(expr, '[')) {
+		auto nodes = get_nodes_by_expression(expr);
+		for (auto x : nodes)
+		{
+			if (x->node_type == CSP::Node::Type::VAR
+				|| x->node_type == CSP::Node::Type::PROPERTY)
+			{
+				string x_type = ((CSP::VarNode*)x)->get_type();
+				int x_rank = CSP::remove_array_type(x_type);
+				if (x_rank == rank) return x_type;
+			}
+		}
+	}
+
+	// 2. array_expr is array type (eg. int[,])
+	else {
+		int x_rank = CSP::remove_array_type(expr);
+		if (x_rank == rank) return expr;
+	}
+
+	if (ret_wldc) return CSP::wldc;
+	return array_expr;
 }
 
 string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
@@ -645,7 +688,49 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 			}
 
 			res = map_to_type(res);
+
+			// now it is object, so non-static
+			visibility |= VIS_NONSTATIC;
+			visibility &= ~VIS_STATIC;
 			
+		}
+
+		// accessing from the array - don't care what is inside, just skip it but count ','
+		if (tokens[pos].type == CST::TK_BRACKET_OPEN) {
+			res += "[";
+			pos++;
+			int depth = 1;
+			int par_depth = 0;
+			for (; tokens[pos].type != CST::TK_EOF; pos++) {
+				if (tokens[pos].type == CST::TK_BRACKET_OPEN)
+					depth++;
+				else if (tokens[pos].type == CST::TK_BRACKET_CLOSE) {
+					depth--;
+					if (depth == 0) break;
+				}
+				else if (tokens[pos].type == CST::TK_PARENTHESIS_OPEN) {
+					par_depth++;
+				}
+				else if (tokens[pos].type == CST::TK_PARENTHESIS_CLOSE) {
+					par_depth--;
+				}
+				else if (tokens[pos].type == CST::TK_COMMA) {
+					if (par_depth == 0) // inside [] can be a function invokation with commas
+						res += ','; // comma must be outside function invokation!
+				}
+
+				// else ignore
+
+			}
+
+			res += "]";
+			pos++;
+
+			res = map_to_type(res);
+
+			// now it is object, so non-static
+			visibility |= VIS_NONSTATIC;
+			visibility &= ~VIS_STATIC;
 		}
 
 		// outer parenthesis close
@@ -945,6 +1030,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
 		if (thisClass != nullptr) {
 			visibility &= ~VIS_STATIC;
+			visibility |= VIS_NONSTATIC;
 			auto nodes = get_nodes_by_simplified_expression_rec(thisClass, tokens, 1);
 			MERGE_LISTS(res, nodes);
 		}
@@ -957,7 +1043,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
 		if (thisClass != nullptr) {
 
-			for (string type_name : thisClass->base_types) {
+			for (string type_name : thisClass->get_base_types()) {
 
 				auto nodes = get_nodes_by_expression(type_name);
 				for (auto x : nodes) {
@@ -967,6 +1053,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 						|| x->node_type == CSP::Node::Type::INTERFACE)
 					{
 						visibility &= ~VIS_STATIC;
+						visibility |= VIS_NONSTATIC;
 						auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, 1);
 						MERGE_LISTS(res, nodes);
 					}
@@ -978,31 +1065,22 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	}
 
 
-	// --- 3: literal -> object ---
+	// --- 3: literal or base type ---
 	case CST::TK_LT_CHAR:
 	case CST::TK_LT_INTEGER:
 	case CST::TK_LT_REAL:
 	case CST::TK_LT_STRING:
-	case CST::TK_LT_INTERPOLATED:
-	{
-		if (_provider != nullptr) {
-			string type = tokens[0].to_string(true);
-			CSP::TypeNode* tn = _provider->resolve_base_type(type);
-			visibility &= ~VIS_STATIC; // non static
-			auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, 1);
-			MERGE_LISTS(res, nodes);
-		}
-
-		break;
+	case CST::TK_LT_INTERPOLATED: {
+		// non-static!
+		visibility &= ~VIS_STATIC;
+		visibility |= VIS_NONSTATIC;
+		// no break, go further -> fallthrough
 	}
-
-	// --- 4: base type -> static ---
 	CASEBASETYPE
 	{
 		if (_provider != nullptr) {
 			string type = tokens[0].to_string(true);
 			CSP::TypeNode* tn = _provider->resolve_base_type(type);
-			visibility |= VIS_STATIC; // static
 			auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, 1);
 			MERGE_LISTS(res, nodes);
 		}
@@ -1068,12 +1146,13 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		for (auto x : start) {
 
 			visibility = prev_visibility;
-			if (IS_TYPE_NODE(x)) {
+			// NOTE: visibility powinno byc ustalone wczesniej!
+			/*if (IS_TYPE_NODE(x)) {
 				visibility |= VIS_STATIC;
 			}
 			else {
 				visibility &= ~VIS_STATIC;
-			}
+			}*/
 
 			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, pos);
 			MERGE_LISTS(res, nodes);
@@ -1093,6 +1172,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 
 	int prev_visibility = this->visibility;
 	this->visibility |= VIS_PPP;
+	this->visibility |= VIS_STATIC; // begin with static context
 
 	if (!contains(expr, "new ")) // new + space
 		this->visibility &= ~VIS_CONSTRUCT;
@@ -1100,8 +1180,8 @@ list<CSP::Node*> CSharpContext::get_nodes_by_expression(string expr)
 		expr = expr.substr(4, expr.length() - 4);
 
 	// jeœli wyra¿enie nie jest proste, to trzeba je uproœciæ
-	// nie proste = jakieœ wywo³anie funkcji
-	if (contains(expr, ')')) {
+	// nie proste = jakieœ wywo³anie funkcji lub jakieœ tablice
+	if (contains(expr, ')') || contains(expr,']')) {
 		expr = simplify_expression(expr);
 		visibility &= ~VIS_STATIC; // no static, object context!
 	}
@@ -1182,7 +1262,7 @@ bool CSharpContext::on_class_chain(const CSP::TypeNode* derive, const CSP::TypeN
 		return true;
 
 	bool res = false;
-	for (string type_name : derive->base_types) {
+	for (string type_name : derive->get_base_types()) {
 
 		auto nodes = get_nodes_by_expression(type_name);
 		for (auto n : nodes) {
@@ -1243,6 +1323,12 @@ CSP::TypeNode* CSharpContext::get_type_by_expression(string expr)
 			return _provider->resolve_base_type(expr);
 
 		}
+	}
+
+	if (_provider != nullptr) {
+		auto nodes2 = _provider->find_class_by_name(expr);
+		if (nodes2.size() > 0)
+			return nodes2.front();
 	}
 
 	return nullptr;
