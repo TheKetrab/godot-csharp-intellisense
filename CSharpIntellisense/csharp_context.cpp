@@ -1044,11 +1044,11 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	//   5. variable
 	//   6. (known by provider)
 	//  
-	//   Note: optional array type! eg: int[] or X[,,] or System.Int32[,]
-
+	//   Note: if '[' in expression then:
+	//     a) array type - eg: int[] or X[,,] or System.Int32[,] - then resolve typenode
+	//     b) expression - eg: N1.C1.P1[22+^| - then IGNORE it, do not help inside '[]'
 
 	int prev_visibility = this->visibility;
-
 
 	list<CSP::Node*> res;
 	switch (tokens[0].type) {
@@ -1071,7 +1071,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
 		if (thisClass != nullptr) {
 
-			for (string type_name : thisClass->get_base_types()) {
+			for (string type_name : thisClass->base_types) {
 
 				auto nodes = get_nodes_by_expression(type_name);
 				for (auto x : nodes) {
@@ -1127,10 +1127,21 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 		list<CSP::Node*> start;
 		int pos = 1;
 
-		// if '[' is there, it must be a type!
+		// --- A: is type? ---
+		bool array_type_mode = false;
 		string type = tokens[0].to_string(true);
 		scan_tokens_array_type(tokens, type, pos);
-		int rank = CSP::remove_array_type(type);
+		int rank = 0;
+		if (contains(type, '[')) {
+			array_type_mode = true;
+			auto array_types = find_by_shortcuts(type);
+			if (!array_types.empty()) {
+				res.push_back(array_types.front());
+				break; // goto finish
+			}
+			// else -> find by identifier and construct array type
+			rank = CSP::compute_rank(type);
+		}
 
 		// --- 4: visible in shortcuts ---
 		auto found_by_shortcuts = find_by_shortcuts(tokens[0].data);
@@ -1182,45 +1193,40 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 
 
 		// IS IT ARRAY TYPE?
-		if (rank > 0) {
-
+		if (array_type_mode) {
 			for (auto x : start) {
 				if (IS_TYPE_NODE(x)) {
-					CSP::TypeNode* new_array_type = new CSP::ClassNode();
-					string new_name = x->name;
-					CSP::add_array_type(new_name, rank);
-					new_array_type->name = new_name;
-					res.push_back(x);
+					CSP::TypeNode* new_array_type = ((CSP::TypeNode*)x)->create_array_type(rank);
+					csc->cinfo.ctx_file->node_shortcuts.insert({ new_array_type->name,new_array_type }); // add to shortcuts
+					res.push_back(new_array_type);
 				}
-			}
-
+			} break; // goto restore
 		}
-		else { // THIS IS NOT ARRAY TYPE -> find further
 
-			// FIND FURTHER
-			for (auto x : start) {
+		// FIND FURTHER
+		for (auto x : start) {
 
-				int pv = visibility;
+			int pv = visibility;
 
-				if ((visibility & VIS_STATIC) > 0 && (visibility & VIS_STATIC) > 0) {
-					// decide - static or non static? - it means it wasn't simplified yet
-					if (IS_TYPE_NODE(x)) {
-						// static
-						visibility &= ~VIS_NONSTATIC;
-						visibility |= VIS_STATIC;
-					}
-					else {
-						// non static
-						visibility &= ~VIS_STATIC;
-						visibility |= VIS_NONSTATIC;
-					}
+			if ((visibility & VIS_STATIC) > 0 && (visibility & VIS_STATIC) > 0) {
+				// decide - static or non static? - it means it wasn't simplified yet
+				if (IS_TYPE_NODE(x)) {
+					// static
+					visibility &= ~VIS_NONSTATIC;
+					visibility |= VIS_STATIC;
 				}
-
-				auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, pos);
-				MERGE_LISTS(res, nodes);
-
-				visibility = pv;
+				else {
+					// non static
+					visibility &= ~VIS_STATIC;
+					visibility |= VIS_NONSTATIC;
+				}
 			}
+
+			auto nodes = get_nodes_by_simplified_expression_rec(x, tokens, pos);
+			MERGE_LISTS(res, nodes);
+
+			visibility = pv;
+			
 		}
 	}
 	}
@@ -1330,7 +1336,7 @@ bool CSharpContext::on_class_chain(const CSP::TypeNode* derive, const CSP::TypeN
 		return true;
 
 	bool res = false;
-	for (string type_name : derive->get_base_types()) {
+	for (string type_name : derive->base_types) {
 
 		auto nodes = get_nodes_by_expression(type_name);
 		for (auto n : nodes) {

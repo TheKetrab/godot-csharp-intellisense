@@ -195,7 +195,9 @@ class CSharpParser {
 	struct TypeNode : public GenericNode {
 		int rank() const; // typy tablicowe maja rank(wymiar) >= 1
 		vector<string> base_types; // base class and interfaces
-		vector<string> get_base_types() const;
+
+		TypeNode* create_array_type(int rank) const;
+
 		TypeNode() {}
 		TypeNode(Type t, TD td) : GenericNode(t, td) {}
 		virtual ~TypeNode() {}

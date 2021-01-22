@@ -2955,18 +2955,12 @@ list<CSP::Node*> CSharpParser::VarNode::get_members(const string name, int visib
 		return csc->get_children_of_base_type(return_type,name);
 
 	// else -> cast to TypeNode and get members
-	int rank = CSP::remove_array_type(return_type);
 	auto nodes = csc->get_nodes_by_expression(return_type);
 
 	if (nodes.size() == 0)
 		return list<CSP::Node*>();
 
 	CSP::TypeNode* type_of_var = (CSP::TypeNode*)nodes.front();
-	if (rank > 0) {
-		string x = type_of_var->name;
-		add_array_type(x, rank);
-		type_of_var->name = x;
-	}
 
 	visibility &= ~VIS_STATIC; // no longer static!
 	visibility |= VIS_NONSTATIC;
@@ -3014,7 +3008,7 @@ void CSharpParser::InterfaceNode::print(int indent) const
 	cout << "INTERFACE " << name << endl;
 
 	// HEADERS:
-	if (get_base_types().size() > 0)     print_header(indent + TAB, get_base_types(), "> base types:");
+	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
 	if (methods.size() > 0)		   print_header(indent + TAB, methods, "> methods:");
 	if (properties.size() > 0)	   print_header(indent + TAB, properties, "> properties:");
 
@@ -3116,7 +3110,7 @@ void CSharpParser::ClassNode::print(int indent) const {
 	cout << "CLASS " << name << ":" << endl;
 
 	// HEADERS:
-	if (get_base_types().size() > 0)  print_header(indent + TAB, get_base_types(), "> base types:");
+	if (base_types.size() > 0)  print_header(indent + TAB, base_types, "> base types:");
 	if (interfaces.size() > 0)	print_header(indent + TAB, interfaces, "> interfaces:");
 	if (classes.size() > 0)		print_header(indent + TAB, classes, "> classes:");
 	if (structures.size() > 0)	print_header(indent + TAB, structures, "> structures:");
@@ -3149,7 +3143,7 @@ void CSharpParser::StructNode::print(int indent) const {
 	cout << "STRUCT " << name << ":" << endl;
 
 	// HEADERS:
-	if (get_base_types().size() > 0)     print_header(indent + TAB, get_base_types(), "> base types:");
+	if (base_types.size() > 0)     print_header(indent + TAB, base_types, "> base types:");
 	if (interfaces.size() > 0)	   print_header(indent + TAB, interfaces, "> interfaces:");
 	if (classes.size() > 0)		   print_header(indent + TAB, classes, "> classes:");
 	if (structures.size() > 0)	   print_header(indent + TAB, structures, "> structures:");
@@ -3173,22 +3167,26 @@ list<CSharpParser::TypeNode*> CSharpParser::StructNode::get_visible_types(int vi
 	MERGE_LISTS_COND(res, classes, VISIBILITY_COND);
 	MERGE_LISTS_COND(res, interfaces, VISIBILITY_COND);
 	
-	// derived types
-	for (auto x : get_base_types()) {
-		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
-		if (type_node != nullptr) { // from base class -> no longer private
-			auto visible_from_base = type_node->get_visible_types(visibility & ~VIS_PRIVATE);
-			MERGE_LISTS(res, visible_from_base);
+	if (!(visibility & VIS_STATIC)) { // if static -> don't take anything from base classes!
+
+		// derived types
+		for (auto x : base_types) {
+			CSP::TypeNode* type_node = csc->get_type_by_expression(x);
+			if (type_node != nullptr) { // from base class -> no longer private
+				auto visible_from_base = type_node->get_visible_types(visibility & ~VIS_PRIVATE);
+				MERGE_LISTS(res, visible_from_base);
+			}
+		}
+
+		// nested types (eg. class defined inside class)
+		if (parent != nullptr) {
+			if (IS_TYPE_NODE(parent)) {
+				auto outside_types = parent->get_visible_types(visibility);
+				MERGE_LISTS(res, outside_types);
+			}
 		}
 	}
 
-	// nested types (eg. class defined inside class)
-	if (parent != nullptr) {
-		if (IS_TYPE_NODE(parent)) {
-			auto outside_types = parent->get_visible_types(visibility);
-			MERGE_LISTS(res, outside_types);
-		}
-	}
 
 	return res;
 }
@@ -3201,12 +3199,15 @@ list<CSharpParser::MethodNode*> CSharpParser::StructNode::get_visible_methods(in
 	MERGE_LISTS_COND(res, methods, 
 		((!!(visibility & VIS_CONSTRUCT) == x->is_constructor()) && VISIBILITY_COND));
 
-	// derived methods
-	for (auto x : get_base_types()) {
-		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
-		if (type_node != nullptr) { // from base class -> no longer private
-			auto visible_from_base = type_node->get_visible_methods(visibility & ~VIS_PRIVATE);
-			MERGE_LISTS(res, visible_from_base);
+	if (!(visibility & VIS_STATIC)) { // if static -> don't take anything from base classes!
+
+		// derived methods
+		for (auto x : base_types) {
+			CSP::TypeNode* type_node = csc->get_type_by_expression(x);
+			if (type_node != nullptr) { // from base class -> no longer private
+				auto visible_from_base = type_node->get_visible_methods(visibility & ~VIS_PRIVATE);
+				MERGE_LISTS(res, visible_from_base);
+			}
 		}
 	}
 
@@ -3221,12 +3222,15 @@ list<CSharpParser::VarNode*> CSharpParser::StructNode::get_visible_vars(int visi
 	MERGE_LISTS_COND(res, variables, VISIBILITY_COND);
 	MERGE_LISTS_COND(res, properties, VISIBILITY_COND);
 
-	// derived types
-	for (auto x : get_base_types()) {
-		CSP::TypeNode* type_node = csc->get_type_by_expression(x);
-		if (type_node != nullptr) { // from base class -> no longer private
-			auto visible_from_base = type_node->get_visible_vars(visibility & ~VIS_PRIVATE);
-			MERGE_LISTS_COND(res, visible_from_base, IS_UNIQUE(res));
+	if (!(visibility & VIS_STATIC)) { // if static -> don't take anything from base classes!
+
+		// derived types
+		for (auto x : base_types) {
+			CSP::TypeNode* type_node = csc->get_type_by_expression(x);
+			if (type_node != nullptr) { // from base class -> no longer private
+				auto visible_from_base = type_node->get_visible_vars(visibility & ~VIS_PRIVATE);
+				MERGE_LISTS_COND(res, visible_from_base, IS_UNIQUE(res));
+			}
 		}
 	}
 
@@ -3503,13 +3507,15 @@ int CSharpParser::TypeNode::rank() const
 	return compute_rank(this->name);
 }
 
-vector<string> CSharpParser::TypeNode::get_base_types() const
+CSP::TypeNode * CSharpParser::TypeNode::create_array_type(int rank) const
 {
-	vector<string> res = base_types;
-	if (rank() > 0) {
-		res.push_back("System.Array");
-	}
-	return res;
+	TypeNode* tn = new ClassNode();
+	tn->name = this->name;
+	CSP::add_array_type(tn->name, rank);
+	tn->base_types.push_back("System.Array");
+	tn->node_type = Node::Type::CLASS;
+
+	return tn;
 }
 
 list<CSP::VarNode*> CSharpParser::LoopNode::get_visible_vars(int visibility) const
