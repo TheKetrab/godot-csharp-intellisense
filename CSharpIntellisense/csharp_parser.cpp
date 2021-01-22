@@ -1637,6 +1637,7 @@ bool CSharpParser::_parse_class_member(ClassNode* node) {
 		else if (_is_actual_token(CST::TK_OP_ASSIGN)) {
 			
 			VarNode* member = new VarNode(name, type, td);
+			_apply_modifiers(member);
 			node->variables.push_back(member);
 			member->parent = node;
 			INCPOS(1); // skip '='
@@ -2130,6 +2131,9 @@ CSharpParser::PropertyNode* CSharpParser::_parse_property(string name, string ty
 	PropertyNode* node = new PropertyNode(td);
 	Node* prev_current = current;
 	this->current = node;
+
+	_apply_attributes(node);
+	_apply_modifiers(node);
 
 	node->name = name;
 	node->type = type;
