@@ -97,7 +97,8 @@ namespace AssemblyReader
             // ----- Found? -----
             if (!string.IsNullOrEmpty(findtype))
             {
-                if (t == null)
+                if ((findtype.Equals("System.Void")) // special type only for reflections - ignore!
+                 || (t == null))
                 {
                     Console.WriteLine(FALSE);
                     return;

@@ -33,7 +33,7 @@ using namespace std;
 	(visibility & VIS_IGNORE) \
 	|| \
 	( \
-		((!!(visibility & VIS_STATIC) == x->is_static()) || (!!(visibility & VIS_NONSTATIC == !x->is_static()))) \
+		(((!!(visibility & VIS_STATIC)) == x->is_static()) || ((!!(visibility & VIS_NONSTATIC)) == !x->is_static())) \
 		&& \
 		(((visibility & VIS_PRIVATE) && (x->is_private() || x->is_protected() || x->is_public())) \
 		|| ((visibility & VIS_PROTECTED) && (x->is_protected() || x->is_public())) \

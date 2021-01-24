@@ -14,6 +14,8 @@ using namespace std;
 
 
 map<const char*, const char*> DotNETProvider::base_types_map = {
+
+	// base types
 	{ "bool",    "System.Boolean" },
 	{ "byte",    "System.Byte"    },
 	{ "sbyte",   "System.SByte"   },
@@ -28,7 +30,24 @@ map<const char*, const char*> DotNETProvider::base_types_map = {
 	{ "uint",    "System.UInt32"  },
 	{ "ulong",   "System.UInt64"  },
 	{ "ushort",  "System.UInt16"  },
-	{ "object",  "System.Object"  }
+	{ "object",  "System.Object"  },
+
+	// base types - object
+	{ "Boolean", "System.Boolean" },
+	{ "Byte",    "System.Byte"    },
+	{ "SByte",   "System.SByte"   },
+	{ "Char",    "System.Char"    },
+	{ "String",  "System.String"  },
+	{ "Decimal", "System.Decimal" },
+	{ "Double",  "System.Double"  },
+	{ "Single",  "System.Single"  },
+	{ "Int32",   "System.Int32"   },
+	{ "Int64",   "System.Int64"   },
+	{ "Int16",   "System.Int16"   },
+	{ "UInt32",  "System.UInt32"  },
+	{ "UInt64",  "System.UInt64"  },
+	{ "UInt16",  "System.UInt16"  },
+	{ "Object",  "System.Object"  }
 };
 
 

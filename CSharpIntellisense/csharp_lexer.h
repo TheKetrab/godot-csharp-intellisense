@@ -120,7 +120,7 @@ public:
 	static bool is_hex(char c);           // 0-9 a-f A-F
 	static bool is_bin(char c);           // 0 1
 	static bool is_whitespace(char c);    // space, tab, newline
-	static bool is_operator(Token& type);
+	static bool is_operator(const Token& type);
 	static bool is_assignment_operator(Token& type);
 	static bool is_context_keyword(const Token& type);
 

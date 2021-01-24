@@ -101,10 +101,10 @@ std::map<CST, CSM> CSharpParser::to_modifier = {
 
 
 void CSharpParser::debug_info() const {
-	if (pos == 62) {
-		int x = 1;
-	}
-	cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
+	//if (pos == 62) {
+	//	int x = 1;
+	//}
+	//cout << "Token: " << (GETTOKEN(0) == CST::TK_IDENTIFIER ? TOKENDATA(0) : CSharpLexer::token_names[(int)GETTOKEN(0)]) << " Pos: " << pos << endl;
 }
 
 
@@ -117,6 +117,33 @@ void CSharpParser::debug_info() const {
 // ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** ***** //
 
 
+map<string, int> CSharpParser::base_type_category = {
+	{ "bool",    1 }, { "Boolean", 1 }, { "System.Boolean", 1 },
+	{ "byte",    2 }, { "Byte",    2 }, { "System.Byte",    2 },
+	{ "sbyte",   3 }, { "SByte",   3 }, { "System.SByte",   3 },
+	{ "char",    4 }, { "Char",    4 }, { "System.Char",    4 },
+	{ "string",  5 }, { "String",  5 }, { "System.String",  5 },
+	{ "decimal", 6 }, { "Decimal", 6 }, { "System.Decimal", 6 },
+	{ "double",  7 }, { "Double",  7 }, { "System.Double",  7 },
+	{ "float",   8 }, { "Single",  8 }, { "System.Single",  8 },
+	{ "int",     9 }, { "Int32",   9 }, { "System.Int32",   9 },
+	{ "long",   10 }, { "Int64",  10 }, { "System.Int64",  10 },
+	{ "short",  11 }, { "Int16",  11 }, { "System.Int16",  11 },
+	{ "uint",   12 }, { "UInt32", 12 }, { "System.UInt32", 12 },
+	{ "ulong",  13 }, { "UInt64", 13 }, { "System.UInt64", 13 },
+	{ "ushort", 14 }, { "UInt16", 14 }, { "System.UInt16", 14 },
+	{ "object", 15 }, { "Object", 15 }, { "System.Object", 15 },
+	{ "void",   16 }, { "Void",   16 }, { "System.Void",   16 }
+};
+
+int CSharpParser::get_base_type_category(const string& type) {
+
+	auto it = base_type_category.find(type);
+	if (it == base_type_category.end())
+		return -1;
+
+	return it->second;
+}
 
 
 CSharpParser::FileNode* CSharpParser::parse() {
@@ -794,8 +821,8 @@ string CSharpParser::_parse_expression(bool inside, CST opener) {
 	// i usunie siê np VarNode: int x = "...error...", a powinniœmy widzieæ zmienn¹ x!
 	// --> jeœli coœ dziwnego, to nale¿y ustawiæ end = true
 
+	string p_expression = cur_expression;
 	prev_expression = cur_expression;
-	//string prev_expr = cur_expression;
 	cur_expression = "";
 
 	try {
@@ -991,7 +1018,7 @@ string CSharpParser::_parse_expression(bool inside, CST opener) {
 	}
 
 	string res = cur_expression;
-	cur_expression = prev_expression;
+	cur_expression = p_expression;
 	//cur_expression = prev_expr;
 	prev_expression = "";
 	return res;
@@ -2649,7 +2676,7 @@ bool CSharpParser::is_base_type(string type) {
 	remove_array_type(type);
 
 	string base_type[] = {
-		"bool", "byte",
+		"bool", "byte", "sbyte"
 		"char", "string",
 		"decimal", "double", "float",
 		"int", "long", "short",
@@ -2657,9 +2684,23 @@ bool CSharpParser::is_base_type(string type) {
 		"void", "object"
 	};
 
+	string base_type_object[] = {
+		"Boolean", "Byte", "SByte"
+		"Char", "String",
+		"Decimal", "Double", "Single",
+		"Int32", "Int64", "Int16",
+		"UInt32", "UInt64", "UInt16",
+		"Void", "Object"
+	};
+
 	for (string x : base_type)
 		if (x == type)
 			return true;
+
+	for (string x : base_type_object)
+		if (x == type)
+			return true;
+
 
 	return false;
 }

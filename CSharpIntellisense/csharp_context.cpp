@@ -322,9 +322,12 @@ vector<pair<CSharpContext::Option, string>> CSharpContext::get_options() {
 
 	}
 
+	// lexicographic sort
+	sort(options.begin(), options.end(),
+		[](const pair<Option, string> &o1, const pair<Option, string> &o2)
+			{ return strcmp(o1.second.c_str(), o2.second.c_str()) < 0; });
 
 	// remove doubles
-	sort(options.begin(), options.end());
 	options.erase(unique(options.begin(), options.end()), options.end());
 
 	return options;
@@ -523,7 +526,7 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 				string this_func_arg = splitted[i];
 				string node_func_arg = x->arguments[i - 1]->type;
 
-				if (this_func_arg != node_func_arg) {
+				if (!types_are_identical(this_func_arg,node_func_arg)) {
 					success = false;
 					break;
 				}
@@ -576,7 +579,7 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 				string this_func_arg = splitted[i];
 				string node_func_arg = x->arguments[i - 1]->type;
 
-				if (this_func_arg != node_func_arg) {
+				if (!types_are_identical(this_func_arg,node_func_arg)) {
 					success = false;
 					break;
 				}
@@ -756,6 +759,35 @@ string CSharpContext::simplify_expr_tokens(const vector<CSharpLexer::TokenData> 
 		else if (tokens[pos].type == CST::TK_KW_NEW) {
 			this->include_constructors = true;
 			pos++;
+		}
+
+		// is operator?
+		else if (CSharpLexer::is_operator(tokens[pos].type)) {
+
+			// totally ignore, first argument is decider:
+			// int    (+) int    = int
+			// int    (+) string = string
+			// string (+) string = string
+			// double (+) int    = double
+			// int    (+) double = int -> TODO in the future: resolve separately args and consider some special cases
+			
+			int par_depth = 0;
+			int bra_depth = 0;
+			for (bool ignore = true; pos < n && ignore; pos++) {
+				switch (tokens[pos].type) {
+
+				case CST::TK_PARENTHESIS_OPEN: par_depth++; break;
+				case CST::TK_BRACKET_OPEN: bra_depth++; break;
+
+				case CST::TK_COMMA:
+				case CST::TK_PARENTHESIS_CLOSE:
+				case CST::TK_BRACKET_CLOSE:
+					if (par_depth == 0 && bra_depth == 0) { ignore = false; pos--; } // end loop
+					else if (tokens[pos].type == CST::TK_PARENTHESIS_CLOSE) par_depth--;
+					else if (tokens[pos].type == CST::TK_BRACKET_CLOSE) bra_depth--;
+					break;
+				}
+			}
 		}
 
 		// sth else
@@ -1017,6 +1049,20 @@ void CSharpContext::scan_tokens_array_type(const vector<CSharpLexer::TokenData>&
 	
 }
 
+bool CSharpContext::types_are_identical(const string & type1, const string & type2)
+{
+	if (type1 == type2)
+		return true;
+
+	int c1 = CSharpParser::get_base_type_category(type1);
+	int c2 = CSharpParser::get_base_type_category(type2);
+
+	if (c1 != -1 && c2 != -1 && c1 == c2)
+		return true;
+
+	return false;
+}
+
 
 list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(string expr) {
 
@@ -1098,31 +1144,30 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	case CST::TK_LT_INTEGER:
 	case CST::TK_LT_REAL:
 	case CST::TK_LT_STRING:
-	case CST::TK_LT_INTERPOLATED: {
-		// non-static!
-		visibility &= ~VIS_STATIC;
-		visibility |= VIS_NONSTATIC;
-		// no break, go further -> fallthrough
-	}
-	CASEBASETYPE
-	{
-		if (_provider != nullptr) {
-			string type = tokens[0].to_string(true);
-
-			int pos = 1;
-			scan_tokens_array_type(tokens, type, pos);
-
-			CSP::TypeNode* tn = _provider->resolve_base_type(type);
-			if (tn == nullptr) return res;
-			auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, pos);
-			MERGE_LISTS(res, nodes);
-		}
-
-		break;
+	case CST::TK_LT_INTERPOLATED: {		
+		break; // literals are not part of long expressions
 	}
 
 	// ----- ----- ----- ----- -----
+	CASEBASETYPE
 	case CST::TK_IDENTIFIER: {
+
+		// --- Base type ? int, Int32, ...
+		if (CSharpParser::is_base_type(tokens[0].to_string())) {
+
+			if (_provider != nullptr) {
+				string type = tokens[0].to_string(true);
+
+				int pos = 1;
+				scan_tokens_array_type(tokens, type, pos);
+
+				CSP::TypeNode* tn = _provider->resolve_base_type(type);
+				if (tn == nullptr) return res;
+				auto nodes = get_nodes_by_simplified_expression_rec(tn, tokens, pos);
+				MERGE_LISTS(res, nodes);
+			}
+
+		}
 
 		list<CSP::Node*> start;
 		int pos = 1;

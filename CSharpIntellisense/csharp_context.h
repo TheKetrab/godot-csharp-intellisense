@@ -122,6 +122,8 @@ public:
 	static void scan_tokens_array_type(const vector<CSharpLexer::TokenData>& tokens, string& type, int& pos);
 
 
+	static bool types_are_identical(const string &type1, const string &type2);
+
 	bool to_base_type(string &t) {
 		
 		if (_provider != nullptr)

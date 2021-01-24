@@ -573,6 +573,9 @@ public:
 	string _deduce_owner_type(int from_pos);
 	int get_position_of_begining(int cur_pos);
 
+
+	static map<string, int> base_type_category;
+	static int get_base_type_category(const string& type);
 };
 
 

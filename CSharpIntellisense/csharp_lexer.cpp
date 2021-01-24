@@ -752,7 +752,7 @@ bool CSharpLexer::is_context_keyword(const Token& type) {
 		&& (int)type <= (int)CSharpLexer::CONTEXT_KEYWORDS_END;
 }
 
-bool CSharpLexer::is_operator(Token& type) {
+bool CSharpLexer::is_operator(const Token& type) {
 	return (int)type >= (int)CSharpLexer::OPS_BEGIN
 		&& (int)type <= (int)CSharpLexer::OPS_END;
 }

@@ -8,10 +8,10 @@ namespace LiveIntellisense
 {
     static class Printer
     {
-        public static ConsoleColor typeColor = ConsoleColor.Yellow;
-        public static ConsoleColor methodColor = ConsoleColor.DarkCyan;
-        public static ConsoleColor currentArgColor = ConsoleColor.Green;
-        public static ConsoleColor varColor = ConsoleColor.Green;
+        public static ConsoleColor typeColor = ConsoleColor.Green;
+        public static ConsoleColor methodColor = ConsoleColor.Cyan;
+        public static ConsoleColor currentArgColor = ConsoleColor.Red;
+        public static ConsoleColor varColor = ConsoleColor.Yellow;
 
         private static string classIdent = "CLASS : ";
         private static string funcIdent = "FUNCTION : ";
