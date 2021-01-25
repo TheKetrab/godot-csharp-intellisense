@@ -1,6 +1,7 @@
 #ifndef CSHARP_MONO_H
 #define CSHARP_MONO_H
 
+#include "csharp_utils.h"
 #include "csharp_context.h"
 #include "mono_gd/gd_mono.h"
 #include "mono_gd/gd_mono_assembly.h"
@@ -10,40 +11,29 @@
 #include "mono_gd/gd_mono_method.h"
 
 using namespace std;
-#include <map>
 
-
-// node'y istnieja tylko na chwile!!!
-// dlatego provider dynamicznie pobiera dzieci jesli potrzeba
-// lub rodzicow itp
-
-class CSharpProviderImpl : ICSharpProvider {
+class CSharpProviderImpl : ICSharpProvider
+{
+	map<string, CSP::TypeNode*> cache;
 
 public:
 
-	// impl
-	virtual list<CSP::TypeNode*> find_class_by_name(string name) const = 0;
-	virtual CSP::TypeNode* resolve_base_type(string base_type) const override;
-	virtual list<CSP::Node*> get_child_dynamic(void* invoker, string name) const override;
-
-
-// TODO: get children dynamic (dopiero gdy potrzebne)
-
 	CSharpProviderImpl();
 
-	
-	static map<const char*,const char*> base_types_map;
+	// implementation
+	list<CSP::TypeNode*> find_class_by_name(string name) override;
+	CSP::TypeNode* resolve_base_type(string base_type) override;
 
-	CSP::TypeNode* to_typenode_adapter(const GDMonoClass* mono_class) const;
-	CSP::MethodNode* to_methodnode_adapter(const GDMonoMethod* mono_method) const;
-	CSP::VarNode* to_varnode_adapter(const GDMonoField* mono_field) const;
-	CSP::VarNode* to_varnode_adapter(const GDMonoProperty* mono_property) const;
+	// adapters
+	CSP::TypeNode* to_typenode_adapter(GDMonoClass* mono_class) const;
+	CSP::MethodNode* to_methodnode_adapter(GDMonoMethod* mono_method) const;
+	CSP::VarNode* to_varnode_adapter(GDMonoField* mono_field) const;
+	CSP::VarNode* to_varnode_adapter(GDMonoProperty* mono_property) const;
 
-
-	
+	// helpers
+	pair<string, string> split_to_namespace_and_classname(string fullname) const;
+	CSP::TypeNode* do_type_query(const string& type_fullname);
 };
-
-
 
 // MONO_TYPE_ATTR_VISIBILITY_MASK       = 0x00000007,
 // MONO_TYPE_ATTR_NOT_PUBLIC            = 0x00000000,
