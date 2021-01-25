@@ -62,10 +62,25 @@ vector<string> split_func(string s) {
 	vector<string> res;
 	string word;
 
+	// convention -> empty word in res means wildcard for an argument
+
 	bool array_type_mode = false;
-	for (int i = 0; s[i] != '\0'; i++)
+	for (int i = 0; ; i++)
 	{
-		if (s[i] == '(' || s[i] == ')' || s[i] == ' ') {
+		if (s[i] == '\0') {
+			if ((i > 0 && s[i - 1] == ',') || !word.empty()) {
+				res.push_back(word);
+				word.clear();
+			} break;
+		}
+
+		else if (s[i] == ' ' || s[i] == '\t') {
+			if (!word.empty()) {
+				res.push_back(word);
+				word.clear();
+			}
+		}
+		else if (s[i] == '(' || s[i] == ')') {
 			if (!word.empty()) {
 				res.push_back(word);
 				word.clear();
@@ -83,7 +98,8 @@ vector<string> split_func(string s) {
 			if (array_type_mode) {
 				word += s[i];
 			}
-			else if (!word.empty()) {
+			else {
+				// possible empty! -> as wildcart m1(6,,,"ds")
 				res.push_back(word);
 				word.clear();
 			}

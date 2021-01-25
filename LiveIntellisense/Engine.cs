@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace LiveIntellisense
 {
@@ -126,6 +127,33 @@ namespace LiveIntellisense
 
             if (cursorFound >= 2)
                 updated = false;
+
+            // still fine? now assert: exactly one file with cursor and exactly one cursor in the file
+            if (updated)
+            {
+                if (cursorFound == 0)
+                {
+                    Printer.PrepareConsole("Error");
+                    Printer.Print("Cursor not found! (Cursor char is: ^| )", errorClr);
+                    updated = false;
+                }
+
+                else // exactly one file
+                {
+                    string t = File.ReadAllText(currentFile);
+
+                    MatchCollection matches = Regex.Matches(t, "\\^\\|");
+                    if (matches.Count > 1)
+                    {
+                        Printer.PrepareConsole("Error");
+                        Printer.Print(string.Format("More then one occurance of cursor found in current file:\n{0}",currentFile), errorClr);
+                        updated = false;
+                    }
+                }
+
+            }
+
+            
 
             return updated;
         }

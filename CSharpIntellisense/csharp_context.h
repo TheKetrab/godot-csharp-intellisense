@@ -9,25 +9,15 @@
 using CSP = CSharpParser;
 using namespace std;
 
-class type_deduction_error : exception {
-
-};
-
-class completion_error : exception {
-
-};
-
-// https://docs.microsoft.com/en-us/archive/msdn-magazine/2019/october/csharp-accessing-xml-documentation-via-reflection
+class type_deduction_error : exception {};
+class completion_error : exception {};
 
 class ICSharpProvider {
 
 public:
 	vector<string> using_directives;
-
 	virtual list<CSP::TypeNode*> find_class_by_name(string name) = 0;
 	virtual CSP::TypeNode* resolve_base_type(string base_type) = 0;
-
-	virtual bool to_base_type(string &t) = 0;
 };
 
 class CSharpContext {
@@ -126,12 +116,45 @@ public:
 
 	bool to_base_type(string &t) {
 		
-		if (_provider != nullptr)
-			if (_provider->to_base_type(t))
+		map<const char*, const char*> types_map = {
+			{ "Boolean"        , "bool" },
+			{ "Byte"           , "byte" },
+			{ "SByte"          , "sbyte" },
+			{ "Char"           , "char" },
+			{ "System.String"  , "string" },
+			{ "System.Decimal" , "decimal" },
+			{ "Double"  	   , "double" },
+			{ "Single"  	   , "float" },
+			{ "Int32"   	   , "int" },
+			{ "Int64"   	   , "long" },
+			{ "Int16"          , "short" },
+			{ "UInt32"         , "uint" },
+			{ "UInt64"         , "ulong" },
+			{ "UInt16"         , "ushort" },
+			{ "System.Object"  , "object" }
+		};
+
+		for (auto x : types_map) {
+			if (strcmp(x.first, t.c_str()) == 0) {
+				t = x.second;
 				return true;
+			}
+		}
+		auto it = types_map.find(t.c_str());
+		if (it != types_map.end()) {
+			t = it->second;
+			return true;
+		}
 
 		return false;
+		
+
 	}
+
+
+
+	static map<const char*, const char*> base_types_map;
+
 };
 
 

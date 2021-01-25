@@ -12,125 +12,65 @@
 
 using namespace std;
 
-
-map<const char*, const char*> DotNETProvider::base_types_map = {
-
-	// base types
-	{ "bool",    "System.Boolean" },
-	{ "byte",    "System.Byte"    },
-	{ "sbyte",   "System.SByte"   },
-	{ "char",    "System.Char"    },
-	{ "string",  "System.String"  },
-	{ "decimal", "System.Decimal" },
-	{ "double",  "System.Double"  },
-	{ "float",   "System.Single"  },
-	{ "int",     "System.Int32"   },
-	{ "long",    "System.Int64"   },
-	{ "short",   "System.Int16"   },
-	{ "uint",    "System.UInt32"  },
-	{ "ulong",   "System.UInt64"  },
-	{ "ushort",  "System.UInt16"  },
-	{ "object",  "System.Object"  },
-
-	// base types - object
-	{ "Boolean", "System.Boolean" },
-	{ "Byte",    "System.Byte"    },
-	{ "SByte",   "System.SByte"   },
-	{ "Char",    "System.Char"    },
-	{ "String",  "System.String"  },
-	{ "Decimal", "System.Decimal" },
-	{ "Double",  "System.Double"  },
-	{ "Single",  "System.Single"  },
-	{ "Int32",   "System.Int32"   },
-	{ "Int64",   "System.Int64"   },
-	{ "Int16",   "System.Int16"   },
-	{ "UInt32",  "System.UInt32"  },
-	{ "UInt64",  "System.UInt64"  },
-	{ "UInt16",  "System.UInt16"  },
-	{ "Object",  "System.Object"  }
-};
-
-
+// invokes external program and takes its standard output
 string DotNETProvider::get_cmd_output(const char* cmd) const {
 
-	array<char, 128> buffer;
-	string result;
+	array<char, 128> buffer; string result;
 	unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(cmd, "r"), _pclose);
-	if (!pipe) {
-		throw runtime_error("popen() failed!");
-	}
-	while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+	if (!pipe) throw runtime_error("popen() failed!");
+
+	while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr)
 		result += buffer.data();
-	}
+
 	return result;
-
 }
-
 
 DotNETProvider::DotNETProvider(string provider_path)
 	: provider_path(provider_path)
 { }
 
+CSP::TypeNode* DotNETProvider::do_type_query(const string& type_fullname)
+{
+	// find in cache; TODO: O(1), not O(n) !!!
+	for (auto it = cache.begin(); it != cache.end(); it++)
+		if (it->first == type_fullname)
+			return it->second;
+
+	// not resolved before - resolve now and add to cache
+	string query = provider_path;
+	query += " -findtype " + type_fullname;
+	string output = get_cmd_output(query.c_str());
+	auto splitted = split(output, '\n');
+	int n = splitted.size();
+
+	if (n > 0 && splitted[0] == "TRUE") {
+		CSP::TypeNode* node = create_class_from_info(splitted, type_fullname);
+		cache.insert({ type_fullname,node }); // possible null
+		return node;
+	}
+
+	else {
+		cache.insert({ type_fullname, nullptr });
+		return nullptr;
+	}
+}
+
+// creates type from 'raw' name - if failed tries to find with opened namespaces
 list<CSP::TypeNode*> DotNETProvider::find_class_by_name(string name)
 {
 	list<CSP::TypeNode*> res;
 
 	// try to match
-	{
-		string the_name = name;
-
-		// find in cache
-		for (auto it = cache.begin(); it != cache.end(); it++)
-			if (it->first == the_name) {
-				res.push_back(it->second);
-				return res;
-			}
-
-		string query = provider_path;
-		query += " -findtype " + the_name;
-		string output = get_cmd_output(query.c_str());
-		auto splitted = split(output, '\n');
-		int n = splitted.size();
-		if (n > 0 && splitted[0] == "TRUE")
-		{
-			CSP::TypeNode* node = create_class_from_info(splitted, the_name);
-			if (node != nullptr) {
-				cache.insert({ the_name,node });
-				res.push_back(node);
-			}
-
-			// it was fulltype!
-			return res;
-		}
-
-	}
+	CSP::TypeNode* node = do_type_query(name);
+	if (node != nullptr)
+		res.push_back(node);
 
 	// try to match with using directives
 	for (auto nmspc : using_directives) {
-
 		string the_name = (nmspc + "." + name);
-
-		// find in cache
-		for (auto it = cache.begin(); it != cache.end(); it++)
-			if (it->first == the_name) {
-				res.push_back(it->second);
-				return res;
-			}
-
-		string query = provider_path;
-		query += " -findtype " + the_name;
-		string output = get_cmd_output(query.c_str());
-		auto splitted = split(output, '\n');
-		int n = splitted.size();
-		if (n > 0 && splitted[0] == "TRUE")
-		{
-			CSP::TypeNode* node = create_class_from_info(splitted, the_name);
-			if (node != nullptr) {
-				cache.insert({ the_name,node });
-				res.push_back(node);
-			}
-		}
-
+		node = do_type_query(the_name);
+		if (node != nullptr) 
+			res.push_back(node);
 	}
 
 	return res;
@@ -141,7 +81,7 @@ CSP::TypeNode* DotNETProvider::resolve_base_type(string base_type)
 	int rank = CSP::remove_array_type(base_type);
 
 	string name = "";
-	for (auto x : base_types_map) {
+	for (auto x : CSharpContext::base_types_map) {
 		if (x.first == base_type)
 			name = x.second;
 	}
@@ -158,40 +98,7 @@ CSP::TypeNode* DotNETProvider::resolve_base_type(string base_type)
 
 }
 
-bool DotNETProvider::to_base_type(string &t)
-{
-	map<const char*, const char*> types_map = {
-		{ "Boolean"        , "bool" },
-		{ "Byte"           , "byte" },
-		{ "SByte"          , "sbyte" },
-		{ "Char"           , "char" },
-		{ "System.String"  , "string" },
-		{ "System.Decimal" , "decimal" },
-		{ "Double"  	   , "double" },
-		{ "Single"  	   , "float" },
-		{ "Int32"   	   , "int" },
-		{ "Int64"   	   , "long" },
-		{ "Int16"          , "short" },
-		{ "UInt32"         , "uint" },
-		{ "UInt64"         , "ulong" },
-		{ "UInt16"         , "ushort" },
-		{ "System.Object"  , "object" }
-	};
 
-	for (auto x : types_map) {
-		if (strcmp(x.first, t.c_str()) == 0) {
-			t = x.second;
-			return true;
-		}
-	}
-	auto it = types_map.find(t.c_str());
-	if (it != types_map.end()) {
-		t = it->second;
-		return true;
-	}
-
-	return false;
-}
 
 CSP::TypeNode* DotNETProvider::to_typenode_adapter(const string class_str) const
 {
@@ -305,7 +212,7 @@ CSP::VarNode* DotNETProvider::to_varnode_adapter(const string var_str) const
 	return node;
 }
 
-
+// interpretes line from assembly reader: BASE_TYPES X Y Z ...
 void DotNETProvider::inject_base_types(CSP::TypeNode* node, string base_types_line) const
 {
 	string str = base_types_line.substr(BASETYPES_PREFIX.length());

@@ -9,6 +9,47 @@
 
 using CST = CSharpLexer::Token;
 
+
+
+
+map<const char*, const char*> CSharpContext::base_types_map = {
+
+	// base types
+	{ "bool",    "System.Boolean" },
+	{ "byte",    "System.Byte"    },
+	{ "sbyte",   "System.SByte"   },
+	{ "char",    "System.Char"    },
+	{ "string",  "System.String"  },
+	{ "decimal", "System.Decimal" },
+	{ "double",  "System.Double"  },
+	{ "float",   "System.Single"  },
+	{ "int",     "System.Int32"   },
+	{ "long",    "System.Int64"   },
+	{ "short",   "System.Int16"   },
+	{ "uint",    "System.UInt32"  },
+	{ "ulong",   "System.UInt64"  },
+	{ "ushort",  "System.UInt16"  },
+	{ "object",  "System.Object"  },
+
+	// base types - object
+	{ "Boolean", "System.Boolean" },
+	{ "Byte",    "System.Byte"    },
+	{ "SByte",   "System.SByte"   },
+	{ "Char",    "System.Char"    },
+	{ "String",  "System.String"  },
+	{ "Decimal", "System.Decimal" },
+	{ "Double",  "System.Double"  },
+	{ "Single",  "System.Single"  },
+	{ "Int32",   "System.Int32"   },
+	{ "Int64",   "System.Int64"   },
+	{ "Int16",   "System.Int16"   },
+	{ "UInt32",  "System.UInt32"  },
+	{ "UInt64",  "System.UInt64"  },
+	{ "UInt16",  "System.UInt16"  },
+	{ "Object",  "System.Object"  }
+};
+
+
 CSharpContext* CSharpContext::_instance = nullptr;
 
 // update state oznacza, ze poproszono o sparsowanie kodu
@@ -484,6 +525,7 @@ string CSharpContext::map_array_to_type(string array_expr, bool ret_wldc)
 
 string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 {
+	// TODO: na samym koncu dopasuj jeszcze funkcje, ktore maja puste argumenty ("") lub wildcarty (?)
 	vector<string> splitted = split_func(func_def);
 
 	string func_name = splitted[0];
@@ -615,6 +657,13 @@ string CSharpContext::map_function_to_type(string func_def, bool ret_wldc)
 			}
 		}
 
+	}
+
+	// 5 - check if function match
+	for (auto x : nodes) { // UWAGA: to moze generowac pomylki!
+		if (function_match(x, func_def)) {
+			return x->return_type;
+		}
 	}
 
 	// none fit
@@ -1009,8 +1058,9 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 		for (int i = pos + 1; tokens[i].type != CST::TK_EOF; i++) {
 
 			if (tokens[i].type == CST::TK_COMMA) {
-				string type = map_to_type(function_arg);
-				function_call += type + ',';
+				string se = simplify_expression(function_arg);
+				//string type = map_to_type(function_arg);
+				function_call += se + ',';
 				function_arg = "";
 			}
 			else {
@@ -1019,8 +1069,10 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression_rec(CSP::Node
 
 		}
 
-		string type = map_to_type(function_arg);
-		function_call += type;
+		if (!function_arg.empty()) {
+			string type = map_to_type(function_arg);
+			function_call += type;
+		}
 
 		if (function_match((CSP::MethodNode*)invoker,function_call))
 			res.push_back(invoker);
@@ -1355,6 +1407,13 @@ bool CSharpContext::function_match(CSP::MethodNode* method, string function_call
 	for (int i = 1; i < n; i++) {
 
 		string this_func_arg = splitted[i];
+		if (this_func_arg == "")
+			continue; // ok, no matter what is argument
+
+		// NOTE: x is unknown: m1(6,x -> m1(int,? -> ? means match no matter what is expected
+		if (this_func_arg == CSharpParser::wldc)
+			continue; // if do not know argument - it is match
+
 		string node_func_arg = method->arguments[i - 1]->type;
 
 		if (this_func_arg != node_func_arg
