@@ -12,28 +12,7 @@ using namespace std;
 #include <map>
 #include "csharp_utils.h"
 
-
-// EXAMPLE!!!
-//GDMonoClass* x = GDMono::get_singleton()->get_class("System","Console");
-//GDMonoClass* x = GDMono::get_singleton()->get_class("System.IO","DirectoryInfo");
-//String fullname = x->get_full_name();
-//print("FULLNAME: ",fullname);
-//
-//auto mm = x->get_all_methods();
-//int n = mm.size();
-//for (int i=0; i<n; i++) {
-//
-//	auto m = mm[i];
-//	print("get_full_name            : ",m->get_full_name());
-//	print("get_full_name(true)      : ",m->get_full_name(true));
-//	print("get_full_name_no_class   : ",m->get_full_name_no_class());
-//	print("get_name                 : ",m->get_name());
-//	print("get_ret_type_fullname    : ",m->get_ret_type_full_name());
-//	print("get_signature_desc       : ",m->get_signature_desc());
-//	print("get_signature_desc(true) : ",m->get_signature_desc(true));
-//
-//}
-
+// ----- HELPERS -----
 string to_string(String s) {
     return string(s.ascii().get_data());
 }
@@ -46,6 +25,7 @@ void print(string label, String s) {
     cout << label << s.ascii().get_data() << endl;
 }
 
+// ----- IMPLEMENTATION -----
 CSharpProviderImpl::CSharpProviderImpl() {
 
 }
@@ -72,6 +52,30 @@ CSP::TypeNode* CSharpProviderImpl::do_type_query(const string& type_fullname)
 		cache.insert({ type_fullname, nullptr });
 		return nullptr;
 	}
+
+}
+
+void CSharpProviderImpl::inject_modifiers(CSP::Node* node, IMonoClassMember* member) const
+{
+	// public, protected, private?
+	auto vis = member->get_visibility();
+	switch (vis) {
+	case IMonoClassMember::Visibility::PRIVATE:
+		node->modifiers |= (int)CSP::Modifier::MOD_PRIVATE;
+		break;
+	case IMonoClassMember::Visibility::PROTECTED:
+		node->modifiers |= (int)CSP::Modifier::MOD_PROTECTED;
+		break;
+	case IMonoClassMember::Visibility::PUBLIC:
+		node->modifiers |= (int)CSP::Modifier::MOD_PUBLIC;
+		break;
+	default:
+		node->modifiers |= (int)CSP::Modifier::MOD_PRIVATE;
+	}
+
+	// static?
+	if (member->is_static())
+		node->modifiers |= (int)CSP::Modifier::MOD_STATIC;
 
 }
 
@@ -133,8 +137,8 @@ CSP::TypeNode* CSharpProviderImpl::to_typenode_adapter(GDMonoClass* mono_class) 
     if (parent != nullptr)
         node->base_types.push_back(to_string(parent->get_name()));
 
-    // node->modifiers TODO!!!
-	node->modifiers |= (int)CSP::Modifier::MOD_PUBLIC;
+    // node->modifiers
+	// TODO !! inject_modifiers(node, mono_class);
 
 	
 	// TODO: mono_class->get_all_delegates
@@ -185,8 +189,8 @@ CSP::MethodNode* CSharpProviderImpl::to_methodnode_adapter(GDMonoMethod* mono_me
         node->arguments.push_back(v);
     }
 
-	// node->modifiers TODO!!!
-	node->modifiers |= (int)CSP::Modifier::MOD_PUBLIC;
+	// node->modifiers
+	inject_modifiers(node, mono_method);
 
     // name
     node->name = to_string(mono_method->get_name());
@@ -204,8 +208,8 @@ CSP::VarNode* CSharpProviderImpl::to_varnode_adapter(GDMonoField* mono_field) co
 {
     CSP::VarNode* node = new CSP::VarNode();
 
-	// node->modifiers TODO!!!
-	node->modifiers |= (int)CSP::Modifier::MOD_PUBLIC;
+	// node->modifiers
+	inject_modifiers(node, mono_field);
 
     // name
     node->name = to_string(mono_field->get_name());
@@ -224,8 +228,8 @@ CSP::VarNode* CSharpProviderImpl::to_varnode_adapter(GDMonoProperty* mono_proper
 {
     CSP::VarNode* node = new CSP::VarNode();
 
-	// node->modifiers TODO!!!
-	node->modifiers |= (int)CSP::Modifier::MOD_PUBLIC;
+	// node->modifiers
+	inject_modifiers(node, mono_property);
 
     // name
     node->name = to_string(mono_property->get_name());

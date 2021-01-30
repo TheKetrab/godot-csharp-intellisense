@@ -8,7 +8,7 @@ namespace LiveIntellisense
     class Program
     {
         // Config
-        static string inputDir = "input";
+        static string inputDir = "Input";
         static string intellisenseProg = "CSharpIntellisense.exe";
         static int timeout = 1000;
 

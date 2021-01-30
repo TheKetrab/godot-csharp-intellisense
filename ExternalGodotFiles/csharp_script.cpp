@@ -1,31 +1,19 @@
 
 // ----- ----- ----- ----- -----
-//
 // PASTE THIS PIECE OF CODE SOMEWHERE IN:
 // ...\godot\modules\mono\csharp_script.cpp
 //
 // @Bartłomiej Grochowski 2020-2021
 // ----- ----- ----- ----- -----
 
-//#if defined(DEBUG_METHODS_ENABLED) && defined(TOOLS_ENABLED)
 #include <iostream>
 #include "csharp_lexer.h"
 #include "csharp_parser.h"
 #include "csharp_context.h"
 
-static int ILOSC = 0;
 Error CSharpLanguage::complete_code(const String &p_code, const String &p_path, Object *p_owner, List<ScriptCodeCompletionOption> *r_options, bool &r_forced, String &r_call_hint) {
 
-	// std::cout<<"P_PATH:"<<std::endl;
-	// std::cout<<p_path.ascii().get_data()<<std::endl;
-
 	std::string code = p_code.ascii().get_data();
-
-	// CSharpLexer lexer(code);
-	// std::cout << "CODE:"<<std::endl;
-	// std::cout << code << std::endl;
-	// lexer.tokenize();
-	// lexer.print_tokens();
 
 	auto _csc = CSharpContext::instance();
 	if (!_csc->provider_registered) {

@@ -1312,6 +1312,9 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 					visibility &= ~VIS_NONSTATIC;
 					visibility |= VIS_STATIC;
 				}
+				else if (x->node_type == CSP::Node::Type::NAMESPACE) {
+					// do nothing with static ctx
+				}
 				else {
 					// non static
 					visibility &= ~VIS_STATIC;
