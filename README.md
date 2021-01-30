@@ -1,8 +1,8 @@
 # Godot Editor C# IntelliSense
 
-<center>
+<p align="center">
 <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/5/5a/Godot_logo.svg/320px-Godot_logo.svg.png" />
-</center>
+</p>
 
 This project is an implementation of autocompletion feature for C# language. Made for thesis by Bartłomiej Grochowski, UWR 2020. This repository consists of C++ sources that you can compile into Godot Mono version
 
@@ -19,7 +19,7 @@ The repository contains:
 git clone https://github.com/godotengine/godot.git −−single−branch −−branch 3.2
 ```
 
-2. Compile Mono version following the <a href="https://docs.godotengine.org/en/stable/development/compiling/index.html">official tutorial</a>.
+2. Compile Mono version following the <a target="_blank" href="https://docs.godotengine.org/en/stable/development/compiling/index.html">official tutorial</a>.
 
 3. Copy the folowing files to `.../godot/modules/mono` directory:
 * CSharpIntellisense/csharp_lexer.h
@@ -37,10 +37,10 @@ git clone https://github.com/godotengine/godot.git −−single−branch −−b
 
 5. Recompile Godot with Mono and run it.
 
-<a href="https://i.imgur.com/HvjIP1J.jpg"><img src="https://i.imgur.com/HvjIP1J.jpg" width="600"></a>
+<a target="_blank" href="https://i.imgur.com/HvjIP1J.jpg"><img src="https://i.imgur.com/HvjIP1J.jpg" width="600"></a>
 
 
 ## LiveIntellisense demo (Windows only)
 Solution file CSharpIntellisense.sln consists of three projects. Compile each of them - they should compile into `Output` directory. Put the `Input` directory inside and add some .cs files there. To simulate cursor placement type `^|` and wait for the LiveIntellisense output. Note: CSharpIntellisense.exe, AssemblyReader.exe and LiveIntellisense.exe must be in the same directories.
 
-<a href="https://i.imgur.com/hmwaldy.jpg"><img src="https://i.imgur.com/hmwaldy.jpg" width="600"></a>
+<a target="_blank" href="https://i.imgur.com/hmwaldy.jpg"><img src="https://i.imgur.com/hmwaldy.jpg" width="600"></a>
