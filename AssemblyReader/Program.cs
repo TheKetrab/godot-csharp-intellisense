@@ -1,10 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Reflection;
-
+﻿
 namespace AssemblyReader
 {
     class Program
@@ -65,17 +59,6 @@ namespace AssemblyReader
                         findtype = args[++i];
                 }
             }
-
-            //any = true;
-            //invoker = "System.Int32";
-            //invoker = "System.Console";
-            //findtype = "System.Console";
-
-            //invoker = "System.String[]";
-            //any = true;
-            //member = "GetExecutingAssembly";
-
-            //findtype = "System.String";
 
             Reader reader = new Reader(assdirs,asspaths)
             {

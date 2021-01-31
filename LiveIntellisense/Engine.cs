@@ -153,7 +153,6 @@ namespace LiveIntellisense
 
             }
 
-            
 
             return updated;
         }
@@ -176,7 +175,6 @@ namespace LiveIntellisense
                     RedirectStandardOutput = true
                 };
 
-                
                 process.Start();
 
                 StreamReader reader = process.StandardOutput;
@@ -190,8 +188,6 @@ namespace LiveIntellisense
             }
 
         }
-
-
 
     }
 }

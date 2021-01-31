@@ -109,7 +109,7 @@ namespace AssemblyReader
 
             }
 
-            // ----- Print (all necessery info about this type to reconstruct it) -----
+            // ----- Print (all necessary info about this type to reconstruct it) -----
 
             if (t != null)
             {
@@ -174,10 +174,6 @@ namespace AssemblyReader
                 //    || (member.MemberType & MemberTypes.NestedType) > 0)
                 //PrintType(member as TypeInfo);
 
-            
-            
-            
-            
             
             
                 // warning !!! no support for extension methods
