@@ -11,8 +11,8 @@
 #include "dotNET_provider.h"
 
 
-#define FILENAME "x.cs"
-#define DEBUG_PROVIDER_PATH "C:\\Users\\ketra\\Desktop\\cpp_godot\\MyIntellisense\\Output\\AssemblyReader.exe"
+#define FILENAME "script.cs" // default file is script.cs
+#define DEBUG_PROVIDER_PATH "" // if none -provider option, then if -debug flag use this as path
 
 
 #define HEADER(title) \
@@ -65,6 +65,7 @@ int main(int argc, const char* argv[]) {
 				provider_path = argv[++i];
 		}
 	}
+	cout << "provider: " << provider_path << endl;
 
 	// ----- ----- READ FILES ----- -----
 
