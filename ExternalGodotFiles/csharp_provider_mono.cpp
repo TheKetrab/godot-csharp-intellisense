@@ -13,22 +13,23 @@ using namespace std;
 #include "csharp_utils.h"
 
 // ----- HELPERS -----
-string to_string(String s) {
+string to_string(String s)
+{
     return string(s.ascii().get_data());
 }
 
-String to_String(string s) {
+String to_String(string s)
+{
     return String(s.c_str());
 }
 
-void print(string label, String s) {
+void print(string label, String s)
+{
     cout << label << s.ascii().get_data() << endl;
 }
 
 // ----- IMPLEMENTATION -----
-CSharpProviderImpl::CSharpProviderImpl() {
-
-}
+CSharpProviderImpl::CSharpProviderImpl() { }
 
 CSP::TypeNode* CSharpProviderImpl::do_type_query(const string& type_fullname)
 {
@@ -101,8 +102,8 @@ list<CSP::TypeNode*> CSharpProviderImpl::find_class_by_name(string name)
 }
 
 // TODO: mozna to przerzucic do CSharpContext
-CSP::TypeNode* CSharpProviderImpl::resolve_base_type(string base_type) {
-
+CSP::TypeNode* CSharpProviderImpl::resolve_base_type(string base_type)
+{
 	int rank = CSP::remove_array_type(base_type);
 
 	string name = "";

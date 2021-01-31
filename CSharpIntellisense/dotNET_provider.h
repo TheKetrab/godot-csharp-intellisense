@@ -4,6 +4,10 @@
 #include "csharp_utils.h"
 #include "csharp_context.h"
 
+using CSP = CSharpParser;
+using CSL = CSharpLexer;
+
+
 using namespace std;
 
 class DotNETProvider : ICSharpProvider

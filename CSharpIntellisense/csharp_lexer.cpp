@@ -68,8 +68,8 @@ const char* CSharpLexer::token_names[(int)CST::TK_MAX] = {
 
 #include <iostream>
 
-void CSharpLexer::clear_state() {
-
+void CSharpLexer::clear_state()
+{
 	tokens.clear();
 
 	pos = 0;
@@ -84,28 +84,29 @@ void CSharpLexer::clear_state() {
 	depth = 0;
 }
 
-CSharpLexer::Token CSharpLexer::_get_last_token() const {
-
+CSharpLexer::Token CSharpLexer::_get_last_token() const
+{
 	int n = tokens.size();
 	if (n == 0) return CST::TK_EMPTY;
 	return tokens[n-1].type;
-
 }
 
-void CSharpLexer::tokenize() {
-
+void CSharpLexer::tokenize()
+{
 	clear_state();
 	_tokenize();
 }
 
-CSharpLexer::CSharpLexer(string code) {
+CSharpLexer::CSharpLexer(string code)
+{
 	clear_state();
 	this->code = code;
 	this->len = code.size();
 }
 
 
-vector<CSharpLexer::TokenData> CSharpLexer::get_tokens() const {
+vector<CSharpLexer::TokenData> CSharpLexer::get_tokens() const
+{
 	return tokens;
 }
 
@@ -115,8 +116,8 @@ set<string> CSharpLexer::get_identifiers() const
 }
 
 
-void CSharpLexer::_tokenize() {
-
+void CSharpLexer::_tokenize()
+{
 	if (pos >= len) {
 		_make_token(CST::TK_EOF);
 		return;
@@ -168,8 +169,8 @@ void CSharpLexer::_tokenize() {
 		// cout << "code pos is: " << code_pos << " -> " << (char)GETCHAR(0) << endl;
 		switch (GETCHAR(0)) {
 
-				// ----- ----- -----
-				// SPECIAL CASES
+			// ----- ----- -----
+			// SPECIAL CASES
 			case 0: {
 				_make_token(CST::TK_EOF);
 				return;
@@ -205,7 +206,6 @@ void CSharpLexer::_tokenize() {
 				break;
 			}
 			case 0xFFFF: {
-				std::cout << "CURSOR" << std::endl;
 				_make_token(CST::TK_CURSOR);
 				INCPOS(1);
 				break;
@@ -252,8 +252,8 @@ void CSharpLexer::_tokenize() {
 				break;
 			}
 
-					 // ----- ----- -----
-					 // TYPICAL CASES
+			// ----- ----- -----
+			// TYPICAL CASES
 			default: {
 
 				typicalcases:
@@ -329,9 +329,8 @@ void CSharpLexer::_tokenize() {
 }
 
 
-
-string CSharpLexer::_skip_until_newline() {
-
+string CSharpLexer::_skip_until_newline()
+{
 	char c; string res = "";
 	while ((c = GETCHAR(0)) != '\n') {
 		res += c; INCPOS(1);
@@ -344,15 +343,15 @@ string CSharpLexer::_skip_until_newline() {
 	return res;
 }
 
-void CSharpLexer::_skip_whitespace() {
-
+void CSharpLexer::_skip_whitespace()
+{
 	char c;
 	while ((c = GETCHAR(0)) > 0 && is_whitespace(c))
 		INCPOS(1);
 }
 
-string CSharpLexer::_skip_until_whitespace() {
-
+string CSharpLexer::_skip_until_whitespace()
+{
 	char c; string res = "";
 	while ((c = GETCHAR(0)) > 0 && !is_whitespace(c)) {
 		res += c; INCPOS(1);
@@ -362,8 +361,8 @@ string CSharpLexer::_skip_until_whitespace() {
 }
 
 // returns skipped string
-string CSharpLexer::_skip_until(string str) {
-
+string CSharpLexer::_skip_until(string str)
+{
 	char c; string res = "";
 	while ((c = GETCHAR(0)) > 0 && !code.substr(pos).rfind(str, 0) == 0) { // begins with
 		res += c; INCPOS(1);
@@ -372,8 +371,8 @@ string CSharpLexer::_skip_until(string str) {
 	return res;
 }
 
-string CSharpLexer::_read_char_literal() {
-
+string CSharpLexer::_read_char_literal()
+{
 	string res = "";
 	if (GETCHAR(0) == '\\') { res += GETCHAR(0) + GETCHAR(1);	INCPOS(2); }
 	else { res += GETCHAR(0); 				INCPOS(1); }
@@ -381,9 +380,8 @@ string CSharpLexer::_read_char_literal() {
 	return res;
 }
 
-
-string CSharpLexer::_read_string_in_brackets() {
-
+string CSharpLexer::_read_string_in_brackets()
+{
 	int depth = 0;
 	char c; string res;
 
@@ -401,8 +399,8 @@ string CSharpLexer::_read_string_in_brackets() {
 	return res;
 }
 
-string CSharpLexer::_read_string_literal() {
-
+string CSharpLexer::_read_string_literal()
+{
 	char c; string res = "";
 	while ((c = GETCHAR(0)) > 0) {
 
@@ -412,8 +410,6 @@ string CSharpLexer::_read_string_literal() {
 				continue;
 			}
 		}
-
-
 
 		if (verbatim_mode) {
 			if (c == '"' && GETCHAR(1) == '"') { res += "\"\""; INCPOS(2); }
@@ -431,10 +427,9 @@ string CSharpLexer::_read_string_literal() {
 
 }
 
-
 // returns true if read successful
-bool CSharpLexer::_read_word(string& word, Token& type) {
-
+bool CSharpLexer::_read_word(string& word, Token& type)
+{
 	char c;
 	while ((c = GETCHAR(0)) > 0 && is_text_char(c)) {
 		INCPOS(1); word += c;
@@ -445,15 +440,15 @@ bool CSharpLexer::_read_word(string& word, Token& type) {
 	return true;
 }
 
-static char ToUpper(char c) {
+static char ToUpper(char c)
+{
 	if (c >= 'a' && c <= 'z')
 		return c - 32;
 	return c;
 }
 
-
-bool CSharpLexer::_read_number(string& number, Token& type) {
-
+bool CSharpLexer::_read_number(string& number, Token& type)
+{
 	bool has_suffix = false;
 	bool hex_mode = false;
 	bool bin_mode = false;
@@ -474,7 +469,6 @@ bool CSharpLexer::_read_number(string& number, Token& type) {
 	if (GETCHAR(0) == '0' && (GETCHAR(1) == 'b' || GETCHAR(1) == 'B')) {
 		bin_mode = true; number += '0' + GETCHAR(1); INCPOS(2);
 	}
-
 
 	char c;
 
@@ -501,7 +495,6 @@ bool CSharpLexer::_read_number(string& number, Token& type) {
 			else { suffix_mode = true; } // sth strange... maybe suffix?
 		}
 	}
-
 
 	// PARSING REAL
 	while ((c = GETCHAR(0)) > 0 && !suffix_mode && real_mode) {
@@ -586,8 +579,8 @@ bool CSharpLexer::_read_number(string& number, Token& type) {
 }
 
 // try to read operator or punctuator
-bool CSharpLexer::_read_special_char(Token& type) {
-
+bool CSharpLexer::_read_special_char(Token& type)
+{
 	switch (GETCHAR(0)) {
 
 	case '{': type = CST::TK_CURLY_BRACKET_OPEN;						INCPOS(1); break;
@@ -711,24 +704,26 @@ bool CSharpLexer::_read_special_char(Token& type) {
 }
 
 
-
-void CSharpLexer::_make_token(const Token p_type) {
+void CSharpLexer::_make_token(const Token p_type)
+{
 	_make_token(p_type, token_names[(int)p_type]);
 }
 
-void CSharpLexer::_make_token(const Token p_type, const string& data) {
+void CSharpLexer::_make_token(const Token p_type, const string& data)
+{
 	TokenData td = { p_type, data, line, column };
 	td.depth = this->depth;
 	tokens.push_back(td);
 }
 
-void CSharpLexer::_make_identifier(const string& identifier) {
+void CSharpLexer::_make_identifier(const string& identifier)
+{
 	this->identifiers.insert(identifier);
 	_make_token(CST::TK_IDENTIFIER, identifier);
 }
 
-bool CSharpLexer::_is_keyword(const string& word, Token& type) const {
-
+bool CSharpLexer::_is_keyword(const string& word, Token& type) const
+{
 	for (int i = (int)RESERVED_KEYWORDS_BEGIN; i <= (int)RESERVED_KEYWORDS_END; i++)
 		if (word == token_names[i]) {
 			type = Token(i);
@@ -746,19 +741,20 @@ bool CSharpLexer::_is_keyword(const string& word, Token& type) const {
 	return false;
 }
 
-bool CSharpLexer::is_context_keyword(const Token& type) {
-	
+bool CSharpLexer::is_context_keyword(const Token& type)
+{	
 	return (int)type >= (int)CSharpLexer::CONTEXT_KEYWORDS_BEGIN
 		&& (int)type <= (int)CSharpLexer::CONTEXT_KEYWORDS_END;
 }
 
-bool CSharpLexer::is_operator(const Token& type) {
+bool CSharpLexer::is_operator(const Token& type)
+{
 	return (int)type >= (int)CSharpLexer::OPS_BEGIN
 		&& (int)type <= (int)CSharpLexer::OPS_END;
 }
 
-bool CSharpLexer::is_assignment_operator(Token& type) {
-
+bool CSharpLexer::is_assignment_operator(Token& type)
+{
 	switch (type) {
 
 	case CST::TK_OP_ASSIGN:
@@ -778,35 +774,34 @@ bool CSharpLexer::is_assignment_operator(Token& type) {
 	}
 }
 
-bool CSharpLexer::is_text_char(char c) {
+bool CSharpLexer::is_text_char(char c)
+{
 	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
 
-
-bool CSharpLexer::is_number(char c) {
-
+bool CSharpLexer::is_number(char c)
+{
 	return (c >= '0' && c <= '9');
 }
 
-bool CSharpLexer::is_hex(char c) {
-
+bool CSharpLexer::is_hex(char c)
+{
 	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
 
-bool CSharpLexer::is_bin(char c) {
-
+bool CSharpLexer::is_bin(char c)
+{
 	return (c == '0' || c == '1');
 }
 
-bool CSharpLexer::is_whitespace(char c) {
-
+bool CSharpLexer::is_whitespace(char c)
+{
 	return (c == ' ' || c == '\t' || c == '\f');
 }
 
-
-void CSharpLexer::print_tokens() const {
-
-	cout << "Print tokens" << endl;
+void CSharpLexer::print_tokens() const
+{
+	cout << "Printing tokens..." << endl;
 
 	int n = tokens.size();
 	int i = 0;
@@ -841,15 +836,11 @@ void CSharpLexer::print_tokens() const {
 	}
 
 	cout << "Printing tokens is done" << endl;
-
 }
 
-
-
-set<string> CSharpLexer::get_keywords() {
-
-	// INIT
-	if (CSharpLexer::keywords.size() < 0) {
+set<string> CSharpLexer::get_keywords()
+{	
+	if (CSharpLexer::keywords.size() < 0) { // INIT
 
 		for (int i = (int)CSharpLexer::RESERVED_KEYWORDS_BEGIN;
 			i <= (int)CSharpLexer::RESERVED_KEYWORDS_END; i++)
@@ -893,13 +884,16 @@ string CSharpLexer::TokenData::to_string(bool typed) const
 			return "double";
 		}
 
-		case CST::TK_LT_CHAR:         return "char";
+		case CST::TK_LT_CHAR:
+			return "char";
 
 		case CST::TK_LT_STRING:
-		case CST::TK_LT_INTERPOLATED: return "string";
+		case CST::TK_LT_INTERPOLATED:
+			return "string";
 
 		case CST::TK_KW_TRUE:
-		case CST::TK_KW_FALSE:        return "bool";
+		case CST::TK_KW_FALSE:
+			return "bool";
 		}
 	}
 

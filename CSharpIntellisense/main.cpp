@@ -12,7 +12,7 @@
 
 
 #define FILENAME "x.cs"
-#define DEBUG_PROVIDER_PATH "C:\\Users\\ketra\\Desktop\\cpp_godot\\MyIntellisense\\Debug\\AssemblyReader.exe"
+#define DEBUG_PROVIDER_PATH "C:\\Users\\ketra\\Desktop\\cpp_godot\\MyIntellisense\\Output\\AssemblyReader.exe"
 
 
 #define HEADER(title) \

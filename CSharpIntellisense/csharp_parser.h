@@ -8,8 +8,10 @@
 #include <unordered_map>
 
 
+
 // TODO: jesli znajdziesz kursor to nie parsuj dalej tego bloku - jesli jestes w bloku
 // --> wtedy aktualny blok zawiera wszystkie statementy zanim jest nasze wyrazenie
+// --> problem: czasem znajdujemy kursor, ale siê wycofujemy (cofiemy pozycjê pos), bo nie uda³o siê czegoœ sparsowaæ wiêc wracamy
 
 using TD = CSharpLexer::TokenData;
 using namespace std;
@@ -105,12 +107,12 @@ class CSharpParser {
 
 		virtual void print(int indent = 0) const = 0;
 		virtual string fullname() const; // eg. Namespace1.Namespace2.ClassX.MethodY(int,Namespace1.ClassY)
-		virtual string prettyname() const; // do wypisywania w intellisense
-		virtual list<NamespaceNode*> get_visible_namespaces() const; // readonly visible namespaces
-		virtual list<TypeNode*> get_visible_types(int visibility) const;           // readonly visible structures, classess, interfaces, delegates
-		virtual list<MethodNode*> get_visible_methods(int visibility) const;       // readonly visible methods
-		virtual list<VarNode*> get_visible_vars(int visibility) const;             // readonly visible vars and properties
-		virtual list<Node*> get_members(const string name, int visibility) const; // dzieci przez nazwe
+		virtual string prettyname() const; // for printing in IntelliSense result
+		virtual list<NamespaceNode*> get_visible_namespaces() const;
+		virtual list<TypeNode*> get_visible_types(int visibility) const;
+		virtual list<MethodNode*> get_visible_methods(int visibility) const;
+		virtual list<VarNode*> get_visible_vars(int visibility) const;
+		virtual list<Node*> get_members(const string name, int visibility) const; // name = "" -> all members
 
 		void print_header(int indent, const vector<string> &v, string title) const;
 
@@ -128,9 +130,6 @@ class CSharpParser {
 
 	};
 
-	// w namespace'ie sa inne namespace'y i klasy
-	// using directives refers ONLY to current namespace or global(aka filenode)
-	// N1 { using System; } ... N1 { SYSTEM NOT VISIBLE !!! }
 	struct NamespaceNode : public Node {
 
 		vector<NamespaceNode*> namespaces;
@@ -149,10 +148,10 @@ class CSharpParser {
 		virtual list<Node*> get_members(const string name, int visibility) const override;
 	};
 
-	// filenode jest jak namespace global, tylko ze ma dodatkowe funkcjonalnosci (to co widac TYLKO w tym pliku)
+	// filenode is like namespace global, but has additional functionality -> sth what is visible only within the file
 	struct FileNode : public NamespaceNode {
 
-		// dzieki temu mozna szybko dostac po nazwie (fullname) odpowiedni node
+		// what is inside file?
 		map<string, Node*> node_shortcuts;
 		set<string> identifiers;
 
@@ -171,7 +170,7 @@ class CSharpParser {
 
 	struct EnumNode : public Node {
 
-		string type = "int"; // domyslnie int
+		string type = "int"; // default
 		vector<string> members;
 
 		EnumNode(TD td) : Node(Type::ENUM, td) {}
@@ -184,7 +183,7 @@ class CSharpParser {
 
 		bool is_generic = false;
 		vector<string> generic_declarations;
-		string constraints; // generyczne: where ... 
+		string constraints; // for generic constraints: where ... 
 		GenericNode() {}
 		GenericNode(Type t, TD td) : Node(t,td) {}
 		virtual ~GenericNode() {}
@@ -193,7 +192,7 @@ class CSharpParser {
 
 	// abstract
 	struct TypeNode : public GenericNode {
-		int rank() const; // typy tablicowe maja rank(wymiar) >= 1
+		int rank() const; // array types have rank(dimension) >= 1
 		vector<string> base_types; // base class and interfaces
 
 		TypeNode* create_array_type(int rank) const;
@@ -314,9 +313,9 @@ class CSharpParser {
 	//		STATEMENT NODE
 	// ----- ----- ----- ----- -----
 	struct StatementNode : public Node {
-		// TODO parse label statement: identifier ":" statement (dla goto, etykiety)
-		string raw;
-		StatementNode* prev = nullptr; // polaczone w liste, zeby mozna bylo przejsc do tylu i poszukac deklaracji
+
+		// TODO parse label statement: identifier ":" statement (goto, labels)
+		string raw; // expression that is represented by this statement
 
 		StatementNode(TD td) : Node(Type::STATEMENT,td) {}
 		virtual ~StatementNode() {}
@@ -393,26 +392,26 @@ class CSharpParser {
 	// ----- ----- ----- ----- -----
 public:
 	enum class Modifier {
-		MOD_PUBLIC = 1,
-		MOD_PROTECTED = 1 << 1,
-		MOD_PRIVATE = 1 << 2,
-		MOD_INTERNAL = 1 << 3,
-		MOD_EXTERN = 1 << 4,
-		MOD_ABSTRACT = 1 << 5,
-		MOD_CONST = 1 << 6,
-		MOD_OVERRIDE = 1 << 7,
-		MOD_PARTIAL = 1 << 8,
-		MOD_READONLY = 1 << 9,
-		MOD_SEALED = 1 << 10,
-		MOD_STATIC = 1 << 11,
-		MOD_UNSAFE = 1 << 12,
-		MOD_VIRTUAL = 1 << 13,
-		MOD_VOLATILE = 1 << 14,
-		MOD_ASYNC = 1 << 15,
-		MOD_REF = 1 << 16,       //
-		MOD_IN = 1 << 17,        // for variables
-		MOD_OUT = 1 << 18,       //
-		MOD_PARAMS = 1 << 19,    //
+		MOD_PUBLIC      = 1,
+		MOD_PROTECTED   = 1 << 1,
+		MOD_PRIVATE     = 1 << 2,
+		MOD_INTERNAL    = 1 << 3,
+		MOD_EXTERN      = 1 << 4,
+		MOD_ABSTRACT    = 1 << 5,
+		MOD_CONST       = 1 << 6,
+		MOD_OVERRIDE    = 1 << 7,
+		MOD_PARTIAL     = 1 << 8,
+		MOD_READONLY    = 1 << 9,
+		MOD_SEALED      = 1 << 10,
+		MOD_STATIC      = 1 << 11,
+		MOD_UNSAFE      = 1 << 12,
+		MOD_VIRTUAL     = 1 << 13,
+		MOD_VOLATILE    = 1 << 14,
+		MOD_ASYNC       = 1 << 15,
+		MOD_REF         = 1 << 16,    // \ 
+		MOD_IN          = 1 << 17,    //  |for variables
+		MOD_OUT         = 1 << 18,    //  /
+		MOD_PARAMS      = 1 << 19,    // /
 		MOD_CONSTRUCTOR = 1 << 20,
 
 		MOD_PPP = MOD_PUBLIC | MOD_PROTECTED | MOD_PRIVATE
@@ -435,7 +434,7 @@ private:
 	string prev_expression;
 	string cur_expression;
 	string cur_type;
-	Node* current;				// dla parsera (to gdzie jest podczas parsowania)
+	Node* current;
 
 	int pos;                    // position of current token
 	int len;                    // total amount of tokens
@@ -455,22 +454,22 @@ private:
 
 		// msg
 		int cur_arg = -1;
-		string completion_expression;        // wyra¿enie, w którym znaleziono kursor
+		string completion_expression;   // expression where the cursor was found
 
 		// cursor
-		Node* ctx_cursor;                    // wêze³, w którym znaleziono kursor
-		int cursor_column = -1;              // column of TK_CURSOR
-		int cursor_line = -1;                // line of TK_CURSOR
+		Node* ctx_cursor;               // node where the cursor was found
+		int cursor_column = -1;         // column of TK_CURSOR
+		int cursor_line = -1;           // line of TK_CURSOR
 
 		// type
-		CompletionType completion_type;      // jaki rodzaj autocompletion jest oczekiwany
+		CompletionType completion_type; // expected kind of autocompletion
 
 		// nodes
-		FileNode* ctx_file;           // plik, w którym jest kursor
-		NamespaceNode *ctx_namespace; // namespace, w którym jest kursor
-		ClassNode *ctx_class;         // klasa, w której jest kursor
-		MethodNode *ctx_method;       // metoda, w której jest kursor
-		BlockNode *ctx_block;         // blok, w którym jest kursor
+		FileNode* ctx_file;             // file in which is coursor
+		NamespaceNode *ctx_namespace;   // namespace in which is coursor
+		ClassNode *ctx_class;           // class in which is coursor
+		MethodNode *ctx_method;         // method in which is coursor
+		BlockNode *ctx_block;           // block in which is coursor
 	} cinfo;
 
 	static const string wldc; // Wild Cart Type
@@ -489,16 +488,18 @@ public:
 	static void indentation(int n);
 	static map<CSharpLexer::Token, Modifier> to_modifier;
 	static bool is_base_type(string type);
-	static bool coercion_possible(string from, string to);
 	static int remove_array_type(string& array_type);
 	static void add_array_type(string& type, int rank);
 	static int compute_rank(const string& type);
+	static string completion_type_name(CompletionType type);
+
+	static map<string, int> base_type_category;
+	static int get_base_type_category(const string& type);
+
+	static CSharpParser* active_parser; // TODO: probably better would be to use shared_ptr & weak_ptr
+
 
 	friend class CSharpContext;
-
-
-
-	static string completion_type_name(CompletionType type);
 
 	template <typename T, typename U>
 	static bool is_unique(const list<T*>& lst, const U* node)
@@ -570,12 +571,7 @@ public:
 
 	// ----- ----- COMPLETION ----- ----- //
 	CompletionType _deduce_completion_type();
-	string _deduce_owner_type(int from_pos);
-	int get_position_of_begining(int cur_pos);
 
-
-	static map<string, int> base_type_category;
-	static int get_base_type_category(const string& type);
 };
 
 

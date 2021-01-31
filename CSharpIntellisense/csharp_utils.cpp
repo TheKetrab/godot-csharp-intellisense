@@ -2,15 +2,16 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+
 string substr(string s, char c) {
 	string res;
-	for (int i = 0; i < s.size() && s[i] != c; i++)
+	for (int i = 0; i < (int)s.size() && s[i] != c; i++)
 		res += s[i];
 	return res;
 }
 
 bool contains(string s, char c) {
-	for (int i = 0; i < s.size(); i++)
+	for (int i = 0; i < (int)s.size(); i++)
 		if (s[i] == c)
 			return true;
 	return false;
@@ -53,8 +54,6 @@ vector<string> split(string s, char c) {
 	}
 
 	return res;
-
-
 }
 
 // eg. f1(int,bool) or f2(int,double,  <-- not totally resolved

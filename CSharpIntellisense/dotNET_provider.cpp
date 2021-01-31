@@ -13,8 +13,8 @@
 using namespace std;
 
 // invokes external program and takes its standard output
-string DotNETProvider::get_cmd_output(const char* cmd) const {
-
+string DotNETProvider::get_cmd_output(const char* cmd) const
+{
 	array<char, 128> buffer; string result;
 	unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(cmd, "r"), _pclose);
 	if (!pipe) throw runtime_error("popen() failed!");
@@ -94,11 +94,10 @@ CSP::TypeNode* DotNETProvider::resolve_base_type(string base_type)
 	}
 
 	auto nodes = find_class_by_name(name);
+	if (nodes.empty()) return nullptr;
 	return nodes.front();
 
 }
-
-
 
 CSP::TypeNode* DotNETProvider::to_typenode_adapter(const string class_str) const
 {

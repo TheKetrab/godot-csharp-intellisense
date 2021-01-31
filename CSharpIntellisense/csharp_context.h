@@ -1,16 +1,18 @@
 #ifndef CSHARP_CONTEXT_H
 #define CSHARP_CONTEXT_H
 
-
-#include <unordered_map>
 #include "csharp_parser.h"
+#include "csharp_lexer.h"
 #include "csharp_utils.h"
 
 using CSP = CSharpParser;
-using namespace std;
+using CSL = CSharpLexer;
 
 class type_deduction_error : exception {};
 class completion_error : exception {};
+
+
+using namespace std;
 
 class ICSharpProvider {
 
@@ -33,127 +35,93 @@ class CSharpContext {
 		KIND_LABEL
 	};
 
-private:
-	static CSharpContext* _instance;
-	CSharpContext();
-
-
-	bool include_constructors; // for get_visible_methods - tylko jesli uzywane przy wyrazeniu takim, ¿e by³o 'new'
-	int visibility = VIS_NONE;
+	// ===============================
+	// ===== ===== MEMBERS ===== =====
+	// ===============================
 
 public:
-	ICSharpProvider* _provider = nullptr;
-
 	bool provider_registered = false;
-
-	void register_provider(ICSharpProvider* provider);
-	static CSharpContext* instance();
-	~CSharpContext();
-	unordered_map<string, CSP::FileNode*> files; // dane o plikach przez nazwe
+	unordered_map<string, CSP::FileNode*> files;
 	CSP::CompletionInfo cinfo;
 
-	void update_state(string &code, string &filename);
-	CSP::CompletionType get_completion_type();
+private:
+	static CSharpContext* _instance;
+	ICSharpProvider* _provider = nullptr;
+	int visibility = VIS_NONE;
+	bool include_constructors; // TODO: czy tego nie za³atwia VIS_CONSTRUCT?
+
+
+	// ===============================
+	// ===== ===== METHODS ===== =====
+	// ===============================
+
+public:
+
+	// singleton
+	static CSharpContext* instance();
+	~CSharpContext();
 
 	// get in context
-	list<CSP::NamespaceNode*> get_visible_namespaces();
-	list<CSP::TypeNode*> get_visible_types();
-	list<CSP::MethodNode*> get_visible_methods();
-	list<CSP::VarNode*> get_visible_vars();
-	list<string> get_visible_labels();
-	list<CSP::TypeNode*> get_types_by_name(string name);
-	list<CSP::MethodNode*> get_methods_by_name(string name);
-	list<CSP::VarNode*> get_vars_by_name(string name);
-	CSP::Node* get_by_fullname(string fullname);
+	list<CSP::NamespaceNode*> get_visible_namespaces() const;
+	list<CSP::TypeNode*> get_visible_types() const;
+	list<CSP::MethodNode*> get_visible_methods() const;
+	list<CSP::VarNode*> get_visible_vars() const;
+	list<string> get_visible_labels() const;
+	list<CSP::TypeNode*> get_types_by_name(string name) const;
+	list<CSP::MethodNode*> get_methods_by_name(string name) const;
+	list<CSP::VarNode*> get_vars_by_name(string name) const;
+	CSP::Node* get_by_fullname(string fullname) const;
 
-	list<CSP::Node*> find_by_shortcuts(string shortname);
+	list<CSP::Node*> find_by_shortcuts(string shortname) const;
 
 	// debug info
-	void print_shortcuts();
 	void print();
+	void print_shortcuts();
 	void print_visible();
 
 	// options
-	vector<pair<Option, string>> get_options();
 	void print_options();
+	vector<pair<Option, string>> get_options();
 	string option_to_string(Option opt);
 	Option node_type_to_option(CSP::Node::Type node_type);
 
-	// deduction
-	// 
-	// wyra¿enie uproszczone, to takie, które nie ma w sobie ZAMKNIÊTYCH wywo³añ funkcji
-	// zamkniête wywo³anie funkcji, to takie, które ma ')'
-	// jeœli takie wystêpuje, to musimy wydedukowaæ zwracany typ
-	// np: N1.C1.DoSth("abc",42).x -> B.x, przy za³o¿eniu, ¿e DoSth zwraca B
-
-	// uproszczanie
+	// simplifying
 	string map_to_type(string type_expr, bool ret_wldc = true);
 	string map_function_to_type(string func_def, bool ret_wldc = true);
 	string map_array_to_type(string array_expr, bool ret_wldc = true);
 	string simplify_expression(const string expr);
 	string simplify_expr_tokens(const vector<CSharpLexer::TokenData> &tokens, int &pos);
 
-	// mapowanie uproszczonych wyra¿eñ na wêz³y
-	list<CSP::Node*> get_nodes_by_simplified_expression(string expr); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
-	list<CSP::Node*> get_nodes_by_simplified_expression(const vector<CSharpLexer::TokenData> &tokens); // zwraca wszystkie pasuj¹ce wêz³y do tego wyra¿enia
+	// expression to node
+	list<CSP::Node*> get_nodes_by_simplified_expression(string expr);
+	list<CSP::Node*> get_nodes_by_simplified_expression(const vector<CSharpLexer::TokenData> &tokens);
 	list<CSP::Node*> get_nodes_by_simplified_expression_rec(CSP::Node* invoker, const vector<CSharpLexer::TokenData> &tokens, int pos);
 	list<CSP::Node*> get_nodes_by_expression(string expr);
 	list<CSP::Node*> get_visible_in_ctx_by_name(string name);
-
-	bool function_match(CSP::MethodNode* method, string function_call) const;
-	bool on_class_chain(const CSP::TypeNode* derive, const CSP::TypeNode* base); // czy jest na lancuchu dziedziczenia
-
 	CSP::TypeNode* get_type_by_expression(string expr);
-	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object, int visibility);
-	int get_visibility_by_var(const CSP::VarNode* var_invoker_object, int visibility);
 
+	// others
+	static map<const char*, const char*> base_types_map;
+	CSP::CompletionType get_completion_type() const;
+	void register_provider(ICSharpProvider* provider);
+	void update_state(string &code, string &filename);
+
+	// helpers
+	void scan_tokens_array_type(const vector<CSharpLexer::TokenData>& tokens, string& type, int& pos) const;
+	bool types_are_identical(const string &type1, const string &type2) const;
+	bool coercion_possible(string from, string to) const;
+	bool to_base_type(string &t) const;
+	bool function_match(CSP::MethodNode* method, string function_call) const;
+	bool on_class_chain(const CSP::TypeNode* derive, const CSP::TypeNode* base) const;
+	int get_visibility_by_invoker_type(const CSP::TypeNode* type_of_invoker_object, int visibility) const;
+	int get_visibility_by_var(const CSP::VarNode* var_invoker_object, int visibility) const;
 	list<CSP::Node*> get_children_of_base_type(string base_type, string child_name) const;
 
-	static void scan_tokens_array_type(const vector<CSharpLexer::TokenData>& tokens, string& type, int& pos);
+private:
 
+	// singleton
+	CSharpContext();
 
-	static bool types_are_identical(const string &type1, const string &type2);
-
-	bool to_base_type(string &t) {
-		
-		map<const char*, const char*> types_map = {
-			{ "Boolean"        , "bool" },
-			{ "Byte"           , "byte" },
-			{ "SByte"          , "sbyte" },
-			{ "Char"           , "char" },
-			{ "System.String"  , "string" },
-			{ "System.Decimal" , "decimal" },
-			{ "Double"  	   , "double" },
-			{ "Single"  	   , "float" },
-			{ "Int32"   	   , "int" },
-			{ "Int64"   	   , "long" },
-			{ "Int16"          , "short" },
-			{ "UInt32"         , "uint" },
-			{ "UInt64"         , "ulong" },
-			{ "UInt16"         , "ushort" },
-			{ "System.Object"  , "object" }
-		};
-
-		for (auto x : types_map) {
-			if (strcmp(x.first, t.c_str()) == 0) {
-				t = x.second;
-				return true;
-			}
-		}
-		auto it = types_map.find(t.c_str());
-		if (it != types_map.end()) {
-			t = it->second;
-			return true;
-		}
-
-		return false;
-		
-
-	}
-
-
-
-	static map<const char*, const char*> base_types_map;
 
 };
 
