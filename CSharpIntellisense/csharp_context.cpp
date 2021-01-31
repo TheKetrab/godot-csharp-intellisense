@@ -1092,7 +1092,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	// expression must be inside the method
 	CSP::TypeNode* thisClass = csc->cinfo.ctx_class;
 	CSP::MethodNode* thisMethod = csc->cinfo.ctx_method;
-	if (thisClass != nullptr && thisMethod != nullptr) {
+	if (thisClass == nullptr || thisMethod == nullptr) {
 		return list<CSP::Node*>();
 	}
 
@@ -1154,12 +1154,6 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 	CASEBASETYPE
 	case CST::TK_IDENTIFIER: {
 
-		if (thisMethod->is_static()) {
-			// only static members are visible!
-			visibility |= VIS_STATIC;
-			visibility &= ~VIS_NONSTATIC;
-		}
-
 		// --- Base type ? int, Int32, ...
 		if (CSharpParser::is_base_type(tokens[0].to_string())) {
 
@@ -1196,13 +1190,23 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 			rank = CSP::compute_rank(type);
 		}
 
+
+#define STATIC_MEMBER_COND \
+	((!thisMethod->is_static()) || (thisMethod->is_static() && ( \
+		(x->parent != thisClass) || (x->parent == thisClass && x->is_static()))))
+
+		// static member cond:
+		// if this method is static and x is member of the same class, x must be static
+
 		// --- 4: visible in shortcuts ---
 		auto found_by_shortcuts = find_by_shortcuts(tokens[0].data);
-		MERGE_LISTS(start, found_by_shortcuts);
+		MERGE_LISTS_COND(start, found_by_shortcuts, STATIC_MEMBER_COND);
 
 		// --- 5: variable or resolvable identifier
 		auto found_by_visible = get_visible_in_ctx_by_name(tokens[0].data);
-		MERGE_LISTS(start, found_by_visible);
+		MERGE_LISTS_COND(start, found_by_visible, STATIC_MEMBER_COND);
+
+#undef STATIC_MEMBER_COND
 
 		// --- 6: find in provider ---
 		if (start.empty()) {
@@ -1240,7 +1244,7 @@ list<CSP::Node*> CSharpContext::get_nodes_by_simplified_expression(const vector<
 					}
 				}
 
-				MERGE_LISTS(start, found_in_provider);
+				MERGE_LISTS_COND(start, found_in_provider, VISIBILITY_COND);
 			}
 		}
 
